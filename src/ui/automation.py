@@ -3,7 +3,7 @@ import asyncio
 import flet as ft
 
 from backend.automation import STEPS, JobQueue
-from ui.common import ACCENT, BG, TINT, badge, heading, muted, notify, panel, title, view
+from ui.common import ACCENT, BG, badge, heading, muted, notify, panel, title, view
 
 
 class AutomationView:
@@ -100,7 +100,11 @@ class AutomationView:
                         ft.ProgressBar(value=job.completed_steps / len(STEPS), color=ACCENT),
                     ]
                 )
-            actions = [badge(job.status, background=TINT if job.status != "대기 중" else BG)]
+            actions = [
+                badge(job.status, color=ft.Colors.ON_SURFACE_VARIANT, background=BG)
+                if job.status == "대기 중"
+                else badge(job.status)
+            ]
             if job.status == "대기 중":
                 actions.append(
                     ft.IconButton(

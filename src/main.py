@@ -3,10 +3,10 @@ import flet as ft
 from backend.experiments import ExperimentStore
 from backend.results import ASSETS
 from ui.automation import AutomationView
-from ui.common import ACCENT, BG, NAV, NAV_SELECTED, TINT, badge
+from ui.common import BASE_SEED, BG, NAV, NAV_SELECTED, badge
 from ui.home import build_home
 from ui.results import ResultsView
-from ui.training import TrainingView
+from ui.training import TRAINING_SEEDS, TrainingView
 
 
 NAVIGATION = (
@@ -23,14 +23,12 @@ def main(page: ft.Page, store: ExperimentStore | None = None):
     page.spacing = 0
     page.bgcolor = BG
     page.theme_mode = ft.ThemeMode.LIGHT
-    page.theme = ft.Theme(color_scheme_seed=ACCENT)
     page.window.width = 1440
     page.window.height = 880
     page.window.min_width = 1200
     page.window.min_height = 680
 
     store = store if store is not None else ExperimentStore()
-    training = TrainingView(page, store)
     results = ResultsView()
     active = 0
     sidebar = ft.Container(
@@ -38,13 +36,25 @@ def main(page: ft.Page, store: ExperimentStore | None = None):
     )
     body = ft.Container(expand=True, padding=ft.Padding.only(left=22, top=22, right=22))
 
+    def apply_theme():
+        seed = TRAINING_SEEDS[training.domain] if active == 1 else BASE_SEED
+        page.theme = ft.Theme(color_scheme_seed=seed)
+        page.dark_theme = ft.Theme(color_scheme_seed=seed)
+
+    def toggle_theme(_):
+        dark = page.theme_mode == ft.ThemeMode.DARK
+        page.theme_mode = ft.ThemeMode.LIGHT if dark else ft.ThemeMode.DARK
+        render_sidebar()
+
     def navigate(index):
         nonlocal active
         active = index
+        apply_theme()
         render_sidebar()
         render_view()
 
     def render_sidebar():
+        dark = page.theme_mode == ft.ThemeMode.DARK
         sidebar.content = ft.Column(
             [
                 ft.Row(
@@ -86,7 +96,14 @@ def main(page: ft.Page, store: ExperimentStore | None = None):
                     for index, (label, icon) in enumerate(NAVIGATION)
                 ],
                 ft.Container(expand=True),
-                ft.Row([badge("DEMO", color=NAV, background=TINT)]),
+                ft.TextButton(
+                    "라이트 모드" if dark else "다크 모드",
+                    key="theme-toggle",
+                    icon=ft.Icons.LIGHT_MODE if dark else ft.Icons.DARK_MODE,
+                    style=ft.ButtonStyle(color="#DCE8F3", icon_color="#DCE8F3"),
+                    on_click=toggle_theme,
+                ),
+                ft.Row([badge("DEMO", color=NAV, background="#E3F4EF")]),
                 ft.Text("로컬 실험 작업 공간", color="#B8CBDA", size=11),
             ],
             spacing=6,
@@ -105,6 +122,7 @@ def main(page: ft.Page, store: ExperimentStore | None = None):
         if active == 2:
             render_view()
 
+    training = TrainingView(page, store, apply_theme)
     automation = AutomationView(page, store, refresh_automation)
     navigate(0)
     page.add(

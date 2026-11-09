@@ -1,13 +1,14 @@
 import flet as ft
 
 
-BG = "#F2F5F8"
-WHITE = "#FFFFFF"
-INK = "#182736"
-MUTED = "#536578"
-LINE = "#DCE4EC"
-ACCENT = "#087F70"
-TINT = "#E3F4EF"
+BASE_SEED = "#087F70"
+BG = ft.Colors.SURFACE_CONTAINER_LOW
+SURFACE = ft.Colors.SURFACE
+INK = ft.Colors.ON_SURFACE
+MUTED = ft.Colors.ON_SURFACE_VARIANT
+LINE = ft.Colors.OUTLINE_VARIANT
+ACCENT = ft.Colors.PRIMARY
+TINT = ft.Colors.PRIMARY_CONTAINER
 NAV = "#142435"
 NAV_SELECTED = "#234457"
 
@@ -20,7 +21,7 @@ def muted(value, size=13):
     return ft.Text(value, size=size, color=MUTED)
 
 
-def badge(value, color=ACCENT, background=TINT):
+def badge(value, color=ft.Colors.ON_PRIMARY_CONTAINER, background=TINT):
     return ft.Container(
         content=ft.Text(value, size=11, color=color, weight=ft.FontWeight.W_700),
         bgcolor=background,
@@ -37,7 +38,7 @@ def panel(controls, *, width=None, expand=None, padding=18, spacing=12):
         padding=padding,
         border_radius=14,
         border=ft.Border.all(1, LINE),
-        bgcolor=WHITE,
+        bgcolor=SURFACE,
     )
 
 

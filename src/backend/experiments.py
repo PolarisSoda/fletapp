@@ -8,18 +8,25 @@ from tempfile import NamedTemporaryFile
 from uuid import uuid4
 
 
+ANIMALS = "animals"
+PLANTS = "plants"
+
+
 @dataclass(frozen=True)
 class CatalogItem:
     id: str
     name: str
     detail: str
+    domain: str | None = None
 
 
 CATALOG = {
     "datasets": (
-        CatalogItem("pets", "Oxford Pets", "37종 · 7,349장"),
-        CatalogItem("cifar", "CIFAR-10", "10종 · 60,000장"),
-        CatalogItem("flowers", "Flowers 102", "102종 · 8,189장"),
+        CatalogItem("pets", "Oxford Pets", "37종 · 7,349장", ANIMALS),
+        CatalogItem("cifar", "CIFAR-10 · 동물 클래스", "새 · 고양이 · 사슴 외", ANIMALS),
+        CatalogItem("flowers", "Flowers 102", "102종 · 8,189장", PLANTS),
+        CatalogItem("plant-village", "PlantVillage", "잎 병해 분류 · 샘플", PLANTS),
+        CatalogItem("leaf-types", "Leaf Types", "잎 품종 분류 · 샘플", PLANTS),
     ),
     "models": (
         CatalogItem("resnet", "ResNet-18", "CNN · 11.7M"),
@@ -76,13 +83,21 @@ class Experiment:
     datasets: list[str] = field(default_factory=list)
     models: list[str] = field(default_factory=list)
     parameters: dict = field(default_factory=defaults)
+    domain: str = ANIMALS
+
+    @classmethod
+    def from_saved(cls, row):
+        # The previous catalog had one plant dataset and no domain field.
+        domain = row.get("domain", PLANTS if "flowers" in row.get("datasets", []) else ANIMALS)
+        return cls(**{**row, "domain": domain, "parameters": {**defaults(), **row.get("parameters", {})}})
 
 
 def demo_experiments():
     return [
         Experiment("pets-baseline", "반려동물 분류 베이스라인", ["pets"], ["resnet"]),
         Experiment("cifar-mobile", "경량 모델 성능 비교", ["cifar"], ["mobile", "resnet"]),
-        Experiment("flowers-vit", "꽃 품종 전이 학습", ["flowers"], ["vit"]),
+        Experiment("flowers-vit", "꽃 품종 전이 학습", ["flowers"], ["vit"], domain=PLANTS),
+        Experiment("leaf-disease", "잎 병해 분류", ["plant-village"], ["mobile"], domain=PLANTS),
     ]
 
 
@@ -94,10 +109,7 @@ class ExperimentStore:
         self.load_error = None
         try:
             rows = json.loads(self.path.read_text(encoding="utf-8"))
-            self.experiments = [
-                Experiment(**{**row, "parameters": {**defaults(), **row.get("parameters", {})}})
-                for row in rows
-            ]
+            self.experiments = [Experiment.from_saved(row) for row in rows]
         except FileNotFoundError:
             self.experiments = demo_experiments()
         except (OSError, ValueError, TypeError, AttributeError) as error:
@@ -135,10 +147,10 @@ class ExperimentStore:
         self.experiments = rows
         return deepcopy(saved)
 
-    def create(self, name: str):
+    def create(self, name: str, domain: str = ANIMALS):
         name = name.strip()
         if not name:
             raise ValueError("실험 이름을 입력하세요.")
         if any(row.name.casefold() == name.casefold() for row in self.experiments):
             raise ValueError("이미 사용 중인 실험 이름입니다.")
-        return self.save(Experiment(uuid4().hex, name))
+        return self.save(Experiment(uuid4().hex, name, domain=domain))

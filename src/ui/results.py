@@ -93,7 +93,7 @@ class ResultsView:
     def verdict(row):
         if row.correct:
             return badge("일치")
-        return badge("오분류", "#A73438", "#FBE7E8")
+        return badge("오분류", ft.Colors.ON_ERROR_CONTAINER, ft.Colors.ERROR_CONTAINER)
 
     def preview(self):
         row = self.selected

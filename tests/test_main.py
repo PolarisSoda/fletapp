@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -5,7 +6,7 @@ import flet as ft
 import pytest
 
 from backend.automation import STEPS, JobQueue
-from backend.experiments import ExperimentStore
+from backend.experiments import ANIMALS, PLANTS, ExperimentStore
 from backend.results import ASSETS, load_predictions
 from ui.training import TrainingView
 
@@ -34,7 +35,7 @@ def test_experiment_settings_survive_reload(tmp_path):
 
 
 def test_training_catalog_supports_both_drop_directions(tmp_path):
-    view = TrainingView(None, ExperimentStore(tmp_path / "experiments.json"))
+    view = TrainingView(None, ExperimentStore(tmp_path / "experiments.json"), lambda: None)
     selected = []
     section = view.catalog_section("models", "모델", selected)
     lists = section.content.controls[1]
@@ -50,6 +51,36 @@ def test_training_catalog_supports_both_drop_directions(tmp_path):
     assert model.group == catalog.group
     catalog.on_accept(SimpleNamespace(src=model))
     assert selected == []
+
+
+def test_training_domains_keep_legacy_experiments_and_unsaved_drafts(tmp_path):
+    path = tmp_path / "experiments.json"
+    path.write_text(json.dumps([
+        {"id": "mixed", "name": "이전 실험", "datasets": ["pets", "flowers"]},
+        {"id": "pet", "name": "동물 실험", "datasets": ["pets"]},
+    ]), encoding="utf-8")
+    store = ExperimentStore(path)
+    assert [row.domain for row in store.experiments] == [PLANTS, ANIMALS]
+    assert ExperimentStore(path).create("새 식물 실험", PLANTS).domain == PLANTS
+    assert ExperimentStore(path).experiments[-1].domain == PLANTS
+
+    themes = []
+    view = TrainingView(None, store, lambda: themes.append(view.domain))
+    view.build()
+    view.drafts["pet"].parameters["--epoch"] = "41"
+    toggle = view.domain_switch().controls[1]
+    toggle.on_change(SimpleNamespace(control=SimpleNamespace(value=True)))
+    assert list(view.drafts) == ["pet", "mixed"]
+    lists = view.catalog_section("datasets", "데이터셋", view.drafts["mixed"].datasets)
+    catalog, selected = (column.content for column in lists.content.controls[1].controls)
+    assert [item.data for item in catalog.content.content.controls[2:]] == [
+        "plant-village", "leaf-types"
+    ]
+    assert [item.data for item in selected.content.content.controls[2:]] == ["pets", "flowers"]
+
+    toggle.on_change(SimpleNamespace(control=SimpleNamespace(value=False)))
+    assert themes == [PLANTS, ANIMALS]
+    assert view.drafts["pet"].parameters["--epoch"] == "41"
 
 
 def test_automation_runs_a_snapshot_of_the_saved_settings(tmp_path):

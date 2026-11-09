@@ -2,15 +2,20 @@ from copy import deepcopy
 
 import flet as ft
 
-from backend.experiments import CATALOG, PARAMETERS
-from ui.common import ACCENT, BG, LINE, TINT, badge, heading, muted, notify, panel, title, view
+from backend.experiments import ANIMALS, CATALOG, PARAMETERS, PLANTS
+from ui.common import ACCENT, BG, LINE, SURFACE, TINT, badge, heading, muted, notify, panel, title, view
+
+
+TRAINING_SEEDS = {ANIMALS: "#2163B5", PLANTS: "#B82F3D"}
 
 
 class TrainingView:
-    def __init__(self, page, store):
+    def __init__(self, page, store, apply_theme):
         self.page = page
         self.store = store
-        self.selected_id = store.experiments[0].id if store.experiments else None
+        self.apply_theme = apply_theme
+        self.domain = ANIMALS
+        self.selection = {}
         self.drafts = {}
         self.content = ft.Container(expand=True)
 
@@ -19,26 +24,31 @@ class TrainingView:
         return self.content
 
     def refresh(self):
+        experiments = [row for row in self.store.experiments if row.domain == self.domain]
+        selected = next(
+            (row for row in experiments if row.id == self.selection.get(self.domain)),
+            experiments[0] if experiments else None,
+        )
         rows = [title("실험 목록", 17)]
-        for experiment in self.store.experiments:
-            selected = experiment.id == self.selected_id
+        for experiment in experiments:
             rows.append(
                 ft.ListTile(
                     title=ft.Text(experiment.name, size=13),
                     leading=ft.Icon(ft.Icons.SCIENCE_OUTLINED, size=19),
-                    selected=selected,
+                    selected=experiment == selected,
                     selected_color=ACCENT,
                     selected_tile_color=TINT,
                     shape=ft.RoundedRectangleBorder(radius=10),
                     on_click=lambda _, item=experiment: self.select(item),
                 )
             )
+        if not experiments:
+            rows.append(muted("이 분야의 실험이 없습니다."))
         rows.append(ft.OutlinedButton("새 실험", icon=ft.Icons.ADD, on_click=self.create))
         if self.store.load_error is not None:
             rows.append(muted("저장된 실험 파일을 읽을 수 없습니다. 샘플을 표시합니다."))
 
         controls = [panel(rows, width=210)]
-        selected = next((row for row in self.store.experiments if row.id == self.selected_id), None)
         if selected is not None:
             draft = self.drafts.setdefault(selected.id, deepcopy(selected))
             controls.extend(
@@ -56,12 +66,47 @@ class TrainingView:
                 ]
             )
         self.content.content = view(
-            heading("01", "학습 실험", "데이터셋과 모델을 조합하고 학습 파라미터를 저장하세요."),
+            ft.Row(
+                [
+                    ft.Container(
+                        content=heading(
+                            "01", "학습 실험", "데이터셋과 모델을 조합하고 학습 파라미터를 저장하세요."
+                        ),
+                        expand=True,
+                    ),
+                    self.domain_switch(),
+                ],
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            ),
             ft.Row(controls, spacing=14, vertical_alignment=ft.CrossAxisAlignment.START),
         )
 
+    def domain_switch(self):
+        plant_mode = self.domain == PLANTS
+
+        def change(event):
+            self.domain = PLANTS if event.control.value else ANIMALS
+            self.apply_theme()
+            self.refresh()
+
+        return ft.Row(
+            [
+                muted("동물 AI") if plant_mode else badge("동물 AI"),
+                ft.Switch(
+                    key="experiment-domain",
+                    value=plant_mode,
+                    tooltip="동물 AI와 식물 AI 전환",
+                    on_change=change,
+                    inactive_track_color=TINT,
+                    inactive_thumb_color=ACCENT,
+                ),
+                badge("식물 AI") if plant_mode else muted("식물 AI"),
+            ],
+            spacing=8,
+        )
+
     def select(self, experiment):
-        self.selected_id = experiment.id
+        self.selection[experiment.domain] = experiment.id
         self.refresh()
 
     def create(self, _):
@@ -69,7 +114,7 @@ class TrainingView:
 
         def confirm(_):
             try:
-                experiment = self.store.create(name.value or "")
+                experiment = self.store.create(name.value or "", self.domain)
             except (ValueError, OSError) as error:
                 name.error_text = str(error)
                 return
@@ -166,7 +211,7 @@ class TrainingView:
 
         def tile(item, add):
             return ft.Container(
-                bgcolor="white",
+                bgcolor=SURFACE,
                 border=ft.Border.all(1, LINE),
                 border_radius=8,
                 padding=ft.Padding.only(left=7, right=3),
@@ -190,14 +235,20 @@ class TrainingView:
             )
 
         def drop_area(add):
-            items = [item for item in CATALOG[kind] if (item.id in selected) != add]
+            if add:
+                items = [
+                    item for item in CATALOG[kind]
+                    if item.id not in selected and item.domain in (None, self.domain)
+                ]
+            else:
+                items = [item for item in CATALOG[kind] if item.id in selected]
             cards = [
                 ft.Draggable(
                     group=f"{kind}:{add}",
                     data=item.id,
                     content=tile(item, add),
                     content_feedback=ft.Container(
-                        content=badge(item.name), padding=4, bgcolor="white", border_radius=10
+                        content=badge(item.name), padding=4, bgcolor=SURFACE, border_radius=10
                     ),
                 )
                 for item in items
@@ -215,6 +266,7 @@ class TrainingView:
                         *(cards or [muted("항목 없음", 11)]),
                     ],
                     spacing=5,
+                    scroll=ft.ScrollMode.AUTO,
                 ),
             )
 
