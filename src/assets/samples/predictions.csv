@@ -1,0 +1,7 @@
+filename,image,actual,predicted,confidence,split
+cat_001.svg,cat.svg,고양이,고양이,0.982,validation
+dog_014.svg,dog.svg,강아지,강아지,0.954,validation
+rabbit_008.svg,rabbit.svg,토끼,고양이,0.673,test
+cat_022.svg,cat.svg,고양이,고양이,0.917,test
+dog_031.svg,dog.svg,강아지,토끼,0.589,test
+rabbit_017.svg,rabbit.svg,토끼,토끼,0.946,validation
