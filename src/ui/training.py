@@ -134,7 +134,7 @@ class TrainingView:
             try:
                 experiment = self.store.create(name.value or "", self.domain)
             except (ValueError, OSError) as error:
-                name.error_text = str(error)
+                name.error = str(error)
                 return
             self.page.pop_dialog()
             self.select(experiment)
@@ -165,10 +165,10 @@ class TrainingView:
                 try:
                     parameter.parse(field.value)
                     if isinstance(field, ft.TextField):
-                        field.error_text = None
+                        field.error = None
                 except ValueError as error:
                     if isinstance(field, ft.TextField):
-                        field.error_text = str(error)
+                        field.error = str(error)
                     valid = False
             self.page.update()
             if not valid:
@@ -214,7 +214,7 @@ class TrainingView:
                 value = draft.parameters[flag]
                 if isinstance(field, ft.TextField):
                     field.value = str(value)
-                    field.error_text = None
+                    field.error = None
                 else:
                     field.value = value
 
