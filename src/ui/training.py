@@ -4,7 +4,7 @@ from dataclasses import dataclass, replace
 import flet as ft
 
 from backend.experiments import ANIMALS, CATALOG, PARAMETERS, PLANTS, Experiment
-from ui.common import ACCENT, BG, LINE, SURFACE, TINT, badge, heading, muted, notify, panel, title, view
+from ui.common import ACCENT, BG, LINE, SURFACE, TINT, badge, heading, muted, panel, title, view
 
 
 TRAINING_SEEDS = {ANIMALS: "#2163B5", PLANTS: "#B82F3D"}
@@ -46,7 +46,7 @@ class TrainingState:
 
 
 @ft.component
-def TrainingScreen(store, state, domain, change_domain):
+def TrainingScreen(store, state, domain, change_domain, notice):
     experiments = [row for row in store.experiments if row.domain == domain]
     selected = next(
         (row for row in experiments if row.id == state.selection.get(domain)),
@@ -68,7 +68,7 @@ def TrainingScreen(store, state, domain, change_domain):
         )
     if not experiments:
         rows.append(muted("이 분야의 실험이 없습니다."))
-    rows.append(NewExperimentButton(store, domain, state.select))
+    rows.append(NewExperimentButton(store, domain, state.select, notice))
     if store.load_error is not None:
         rows.append(muted("저장된 실험 파일을 읽을 수 없습니다. 샘플을 표시합니다."))
 
@@ -78,17 +78,15 @@ def TrainingScreen(store, state, domain, change_domain):
         controls.extend(
             [
                 Catalogs(draft, domain),
-                Parameters(store, draft, key=f"parameters:{selected.id}"),
+                Parameters(store, draft, notice, key=f"parameters:{selected.id}"),
             ]
         )
 
     return view(
         ft.Row(
             [
-                ft.Container(
-                    content=heading(
-                        "01", "학습 실험", "데이터셋과 모델을 조합하고 학습 파라미터를 저장하세요."
-                    ),
+                heading(
+                    "01", "학습 실험", "데이터셋과 모델을 조합하고 학습 파라미터를 저장하세요.",
                     expand=True,
                 ),
                 domain_switch(domain, change_domain),
@@ -119,43 +117,47 @@ def domain_switch(domain, change_domain):
 
 
 @ft.component
-def NewExperimentButton(store, domain, select):
+def NewExperimentButton(store, domain, select, notice):
     opened, set_opened = ft.use_state(False)
     error, set_error = ft.use_state(None)
-    name = ft.use_memo(ft.Ref, [opened])
+    name, set_name = ft.use_state("")
 
     def close(_):
         set_opened(False)
 
     def open_dialog(_):
         set_error(None)
+        set_name("")
         set_opened(True)
 
-    def confirm(event):
+    def confirm(value):
         try:
-            experiment = store.create(name.current.value or "", domain)
+            experiment = store.create(value or "", domain)
         except (ValueError, OSError) as failure:
             set_error(str(failure))
             return
-        close(event)
+        set_opened(False)
         select(experiment)
-        notify(event.page, "새 실험을 추가했습니다.")
+        notice("새 실험을 추가했습니다.")
 
     ft.use_dialog(
         ft.AlertDialog(
             modal=True,
             title=title("새 실험"),
             content=ft.TextField(
-                ref=name,
                 label="실험 이름",
                 autofocus=True,
                 max_length=60,
                 width=340,
-                value=name.current.value if name.current else "",
+                value=name,
                 error=error,
-                on_submit=confirm,
+                on_change=lambda event: set_name(event.control.value),
+                on_submit=lambda event: confirm(event.control.value),
             ),
-            actions=[ft.TextButton("취소", on_click=close), ft.FilledButton("추가", on_click=confirm)],
+            actions=[
+                ft.TextButton("취소", on_click=close),
+                ft.FilledButton("추가", on_click=lambda _: confirm(name)),
+            ],
             on_dismiss=close,
         )
         if opened else None
@@ -233,9 +235,7 @@ def DropArea(move_item, kind, items, add):
                     spacing=3,
                 ),
             ),
-            content_feedback=ft.Container(
-                content=badge(item.name), padding=4, bgcolor=SURFACE, border_radius=10
-            ),
+            content_feedback=badge(item.name, background=SURFACE),
         )
         for item in items
     ]
@@ -255,23 +255,21 @@ def DropArea(move_item, kind, items, add):
             scroll=ft.ScrollMode.AUTO,
         ),
     )
-    return ft.Container(
+    return ft.DragTarget(
         expand=True,
-        content=ft.DragTarget(
-            group=f"{kind}:{not add}",
-            content=box,
-            on_will_accept=lambda event: set_hovered(event.accept),
-            on_leave=lambda _: set_hovered(False),
-            on_accept=lambda event: move(event.src.data, not add),
-        ),
+        group=f"{kind}:{not add}",
+        content=box,
+        on_will_accept=lambda event: set_hovered(event.accept),
+        on_leave=lambda _: set_hovered(False),
+        on_accept=lambda event: move(event.src.data, not add),
     )
 
 
 @ft.component
-def Parameters(store, draft):
+def Parameters(store, draft, notice):
     errors, set_errors = ft.use_state({})
 
-    def save(event):
+    def save(_):
         experiment = draft.experiment
         failures = {}
         for parameter in PARAMETERS:
@@ -281,14 +279,14 @@ def Parameters(store, draft):
                 failures[parameter.flag] = str(error)
         set_errors(failures)
         if failures:
-            notify(event.page, "파라미터 값을 확인하세요.")
+            notice("파라미터 값을 확인하세요.")
             return
         try:
             store.save(experiment)
         except (ValueError, OSError) as error:
-            notify(event.page, f"저장 실패 · {error}")
+            notice(f"저장 실패 · {error}")
         else:
-            notify(event.page, "실험 설정을 저장했습니다.")
+            notice("실험 설정을 저장했습니다.")
 
     fields = []
     for parameter in PARAMETERS:

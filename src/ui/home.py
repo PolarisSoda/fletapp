@@ -3,7 +3,8 @@ import flet as ft
 from ui.common import ACCENT, NAV, TINT, badge, heading, muted, panel, title, view
 
 
-def build_home(store, navigate):
+@ft.component
+def HomeScreen(store, navigate):
     sections = (
         (1, "학습 실험", "데이터셋과 모델을 조합하고 파라미터를 설정합니다.", ft.Icons.SCIENCE_OUTLINED),
         (2, "학습 자동화", "저장된 실험을 대기열에 넣고 실행 단계를 확인합니다.", ft.Icons.ACCOUNT_TREE_OUTLINED),

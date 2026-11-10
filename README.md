@@ -13,6 +13,18 @@ uv run flet run src/main.py
 
 화면은 `src/ui`, 저장과 데이터 처리는 `src/backend`에 있습니다. 테스트는 `uv run pytest`로 실행합니다.
 
+## 외부 전송
+
+학습 자동화에서 저장된 실험을 고르고 **외부 전송**을 누르면 설정 전체를 JSON으로 POST합니다. 앱을 실행하기 전에 받을 API 주소를 지정하세요.
+
+```powershell
+$env:MODEL_WORKBENCH_API_URL = "https://your-server.example/api/experiments"
+uv run flet run src/main.py
+```
+
+다른 API나 FTP를 연결하려면 `src/backend/transport.py`의 `ExperimentSender` 인터페이스에 맞춰 `async send(experiment)`를 구현하고, `main(page, sender=...)`으로 전달하면 됩니다.
+
+
 ## Run the app
 
 ### uv

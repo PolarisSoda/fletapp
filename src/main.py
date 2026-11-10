@@ -2,10 +2,11 @@ import flet as ft
 
 from backend.experiments import ANIMALS, ExperimentStore
 from backend.results import ASSETS
-from ui.automation import AutomationView
-from ui.common import BASE_SEED, BG, NAV, NAV_SELECTED, badge
-from ui.home import build_home
-from ui.results import ResultsView
+from backend.transport import ExperimentSender, configured_sender
+from ui.automation import AutomationScreen, AutomationState
+from ui.common import BASE_SEED, BG, NAV, NAV_SELECTED, badge, use_notice
+from ui.home import HomeScreen
+from ui.results import ResultsScreen, ResultsState
 from ui.training import TRAINING_SEEDS, TrainingScreen, TrainingState
 
 
@@ -17,7 +18,11 @@ NAVIGATION = (
 )
 
 
-def main(page: ft.Page, store: ExperimentStore | None = None):
+def main(
+    page: ft.Page,
+    store: ExperimentStore | None = None,
+    sender: ExperimentSender | None = None,
+):
     page.title = "Model Workbench"
     page.padding = 0
     page.spacing = 0
@@ -29,13 +34,15 @@ def main(page: ft.Page, store: ExperimentStore | None = None):
     page.window.min_height = 680
 
     store = store if store is not None else ExperimentStore()
-    results = ResultsView()
+    sender = sender if sender is not None else configured_sender()
 
-    def apply_theme(seed):
+    def apply_theme(seed, dark):
         page.theme = ft.Theme(color_scheme_seed=seed)
         page.dark_theme = ft.Theme(color_scheme_seed=seed)
+        page.theme_mode = ft.ThemeMode.DARK if dark else ft.ThemeMode.LIGHT
 
-    def build_sidebar(active, dark, navigate, toggle_theme):
+    @ft.component
+    def Sidebar(active, dark, navigate, toggle_theme):
         content = ft.Column(
             [
                 ft.Row(
@@ -60,23 +67,24 @@ def main(page: ft.Page, store: ExperimentStore | None = None):
                     padding=ft.Padding.only(top=22, left=8, bottom=2),
                 ),
                 *[
-                    ft.Container(
+                    ft.TextButton(
+                        label,
                         key=f"nav-{index}",
-                        bgcolor=NAV_SELECTED if index == active else NAV,
-                        border_radius=9,
-                        padding=ft.Padding.symmetric(vertical=12, horizontal=12),
+                        icon=icon,
+                        width=166,
                         on_click=lambda _, destination=index: navigate(destination),
-                        content=ft.Row(
-                            [
-                                ft.Icon(icon, color="#83E3CC" if index == active else "#B8CBDA", size=20),
-                                ft.Text(label, color="white", size=14),
-                            ],
-                            spacing=10,
+                        style=ft.ButtonStyle(
+                            bgcolor=NAV_SELECTED if index == active else NAV,
+                            color="white",
+                            icon_color="#83E3CC" if index == active else "#B8CBDA",
+                            shape=ft.RoundedRectangleBorder(radius=9),
+                            padding=ft.Padding.symmetric(vertical=12, horizontal=12),
+                            alignment=ft.Alignment.CENTER_LEFT,
                         ),
                     )
                     for index, (label, icon) in enumerate(NAVIGATION)
                 ],
-                ft.Container(expand=True),
+                ft.Column(expand=True),
                 ft.TextButton(
                     "라이트 모드" if dark else "다크 모드",
                     key="theme-toggle",
@@ -99,36 +107,25 @@ def main(page: ft.Page, store: ExperimentStore | None = None):
         active, set_active = ft.use_state(0)
         domain, set_domain = ft.use_state(ANIMALS)
         dark, set_dark = ft.use_state(False)
-        _, set_revision = ft.use_state(0)
         training = ft.use_memo(TrainingState, [])
-
-        def refresh():
-            set_revision(lambda revision: revision + 1)
-
-        automation = ft.use_memo(lambda: AutomationView(page, store, refresh), [])
-
-        def navigate(index):
-            apply_theme(TRAINING_SEEDS[domain] if index == 1 else BASE_SEED)
-            set_active(index)
-
-        def change_domain(next_domain):
-            apply_theme(TRAINING_SEEDS[next_domain])
-            set_domain(next_domain)
+        automation = ft.use_memo(AutomationState, [])
+        results = ft.use_memo(ResultsState, [])
+        notice = use_notice()
+        seed = TRAINING_SEEDS[domain] if active == 1 else BASE_SEED
+        ft.use_effect(lambda: apply_theme(seed, dark), dependencies=[seed, dark])
 
         def toggle_theme(_):
-            next_dark = page.theme_mode != ft.ThemeMode.DARK
-            page.theme_mode = ft.ThemeMode.DARK if next_dark else ft.ThemeMode.LIGHT
-            set_dark(next_dark)
+            set_dark(lambda value: not value)
 
         builders = (
-            lambda: build_home(store, navigate),
-            lambda: TrainingScreen(store, training, domain, change_domain),
-            automation.build,
-            lambda: results.build(refresh),
+            lambda: HomeScreen(store, set_active),
+            lambda: TrainingScreen(store, training, domain, set_domain, notice),
+            lambda: AutomationScreen(store, automation, sender, notice),
+            lambda: ResultsScreen(results),
         )
         return ft.Row(
             [
-                build_sidebar(active, dark, navigate, toggle_theme),
+                Sidebar(active, dark, set_active, toggle_theme),
                 ft.Container(
                     key=f"screen-{active}",
                     content=builders[active](),
@@ -141,7 +138,7 @@ def main(page: ft.Page, store: ExperimentStore | None = None):
             vertical_alignment=ft.CrossAxisAlignment.STRETCH,
         )
 
-    apply_theme(BASE_SEED)
+    apply_theme(BASE_SEED, False)
     page.render(Workbench)
 
 

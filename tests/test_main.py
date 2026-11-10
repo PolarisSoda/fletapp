@@ -78,7 +78,7 @@ async def event(session, control, name, payload=None, **props):
 
 
 def layout(session):
-    return ft.unwrap_component(session.page.controls).controls
+    return [ft.unwrap_component(control) for control in ft.unwrap_component(session.page.controls).controls]
 
 
 def training(session):
@@ -91,7 +91,7 @@ def details(session):
 
 def targets(catalogs, index):
     row = catalogs.controls[index].content.controls[1]
-    return [ft.unwrap_component(area).content for area in row.controls]
+    return [ft.unwrap_component(area) for area in row.controls]
 
 
 def cards(target):

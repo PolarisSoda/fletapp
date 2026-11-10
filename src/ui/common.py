@@ -42,7 +42,7 @@ def panel(controls, *, width=None, expand=None, padding=18, spacing=12):
     )
 
 
-def heading(index, name, description):
+def heading(index, name, description, *, expand=None):
     return ft.Column(
         [
             ft.Text(f"WORKSPACE  /  {index}", size=11, color=ACCENT, weight=ft.FontWeight.W_700),
@@ -50,6 +50,7 @@ def heading(index, name, description):
             muted(description, 14),
         ],
         spacing=5,
+        expand=expand,
     )
 
 
@@ -57,5 +58,10 @@ def view(*controls):
     return ft.Column(list(controls), spacing=20, expand=True, scroll=ft.ScrollMode.AUTO)
 
 
-def notify(page, message):
-    page.show_dialog(ft.SnackBar(content=ft.Text(message)))
+def use_notice():
+    message, set_message = ft.use_state(None)
+    ft.use_dialog(
+        ft.SnackBar(content=ft.Text(message), on_dismiss=lambda _: set_message(None))
+        if message else None
+    )
+    return set_message
