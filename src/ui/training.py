@@ -18,6 +18,8 @@ class TrainingView:
         self.selection = {}
         self.drafts = {}
         self.content = ft.Container(expand=True)
+        self._experiment_tiles = {}
+        self._bind_details = None
 
     def build(self):
         self.refresh()
@@ -30,18 +32,19 @@ class TrainingView:
             experiments[0] if experiments else None,
         )
         rows = [title("실험 목록", 17)]
+        self._experiment_tiles = {}
         for experiment in experiments:
-            rows.append(
-                ft.ListTile(
-                    title=ft.Text(experiment.name, size=13),
-                    leading=ft.Icon(ft.Icons.SCIENCE_OUTLINED, size=19),
-                    selected=experiment == selected,
-                    selected_color=ACCENT,
-                    selected_tile_color=TINT,
-                    shape=ft.RoundedRectangleBorder(radius=10),
-                    on_click=lambda _, item=experiment: self.select(item),
-                )
+            tile = ft.ListTile(
+                title=ft.Text(experiment.name, size=13),
+                leading=ft.Icon(ft.Icons.SCIENCE_OUTLINED, size=19),
+                selected=experiment == selected,
+                selected_color=ACCENT,
+                selected_tile_color=TINT,
+                shape=ft.RoundedRectangleBorder(radius=10),
+                on_click=lambda _, item=experiment: self.select(item),
             )
+            self._experiment_tiles[experiment.id] = tile
+            rows.append(tile)
         if not experiments:
             rows.append(muted("이 분야의 실험이 없습니다."))
         rows.append(ft.OutlinedButton("새 실험", icon=ft.Icons.ADD, on_click=self.create))
@@ -49,20 +52,27 @@ class TrainingView:
             rows.append(muted("저장된 실험 파일을 읽을 수 없습니다. 샘플을 표시합니다."))
 
         controls = [panel(rows, width=210)]
+        self._bind_details = None
         if selected is not None:
             draft = self.drafts.setdefault(selected.id, deepcopy(selected))
+            name = title(draft.name, 22)
+            datasets, bind_datasets = self._build_catalog_section(
+                "datasets", "데이터셋", draft.datasets
+            )
+            models, bind_models = self._build_catalog_section("models", "모델", draft.models)
+            parameters, bind_parameters = self.parameters(draft)
+
+            def bind_details(draft):
+                name.value = draft.name
+                bind_datasets(draft.datasets)
+                bind_models(draft.models)
+                bind_parameters(draft)
+
+            self._bind_details = bind_details
             controls.extend(
                 [
-                    ft.Column(
-                        [
-                            title(draft.name, 22),
-                            self.catalog_section("datasets", "데이터셋", draft.datasets),
-                            self.catalog_section("models", "모델", draft.models),
-                        ],
-                        expand=True,
-                        spacing=12,
-                    ),
-                    self.parameters(draft),
+                    ft.Column([name, datasets, models], expand=True, spacing=12),
+                    parameters,
                 ]
             )
         self.content.content = view(
@@ -107,7 +117,15 @@ class TrainingView:
 
     def select(self, experiment):
         self.selection[experiment.domain] = experiment.id
-        self.refresh()
+        tile = self._experiment_tiles.get(experiment.id)
+        if tile is None or self._bind_details is None:
+            self.refresh()
+            return
+        if tile.selected:
+            return
+        for item in self._experiment_tiles.values():
+            item.selected = item is tile
+        self._bind_details(self.drafts.setdefault(experiment.id, deepcopy(experiment)))
 
     def create(self, _):
         name = ft.TextField(label="실험 이름", autofocus=True, max_length=60, width=340)
@@ -189,7 +207,18 @@ class TrainingView:
                     on_change=changed,
                 )
             fields[parameter.flag] = field
-        return panel(
+        def bind(next_draft):
+            nonlocal draft
+            draft = next_draft
+            for flag, field in fields.items():
+                value = draft.parameters[flag]
+                if isinstance(field, ft.TextField):
+                    field.value = str(value)
+                    field.error_text = None
+                else:
+                    field.value = value
+
+        controls = panel(
             [
                 title("학습 파라미터", 17),
                 *fields.values(),
@@ -198,16 +227,19 @@ class TrainingView:
             width=262,
             spacing=10,
         )
+        return controls, bind
 
     def catalog_section(self, kind, label, selected):
-        lists = ft.Row(spacing=10, vertical_alignment=ft.CrossAxisAlignment.START)
+        section, _ = self._build_catalog_section(kind, label, selected)
+        return section
 
+    def _build_catalog_section(self, kind, label, selected):
         def move(item_id, add):
             if add and item_id not in selected:
                 selected.append(item_id)
             elif not add and item_id in selected:
                 selected.remove(item_id)
-            refresh()
+            bind(selected)
 
         def tile(item, add):
             return ft.Container(
@@ -235,15 +267,8 @@ class TrainingView:
             )
 
         def drop_area(add):
-            if add:
-                items = [
-                    item for item in CATALOG[kind]
-                    if item.id not in selected and item.domain in (None, self.domain)
-                ]
-            else:
-                items = [item for item in CATALOG[kind] if item.id in selected]
-            cards = [
-                ft.Draggable(
+            cards = {
+                item.id: ft.Draggable(
                     group=f"{kind}:{add}",
                     data=item.id,
                     content=tile(item, add),
@@ -251,24 +276,29 @@ class TrainingView:
                         content=badge(item.name), padding=4, bgcolor=SURFACE, border_radius=10
                     ),
                 )
-                for item in items
-            ]
+                for item in CATALOG[kind]
+                if not add or item.domain in (None, self.domain)
+            }
+            caption = title("", 13)
+            hint = muted("여기로 놓아 제거" if add else "여기로 놓아 추가", 11)
+            empty = muted("항목 없음", 11)
+            column = ft.Column(spacing=5, scroll=ft.ScrollMode.AUTO)
             box = ft.Container(
                 bgcolor=BG,
                 border=ft.Border.all(1, LINE),
                 border_radius=10,
                 padding=9,
                 height=194,
-                content=ft.Column(
-                    [
-                        title(f"카탈로그 · {len(items)}" if add else f"선택됨 · {len(items)}", 13),
-                        muted("여기로 놓아 제거" if add else "여기로 놓아 추가", 11),
-                        *(cards or [muted("항목 없음", 11)]),
-                    ],
-                    spacing=5,
-                    scroll=ft.ScrollMode.AUTO,
-                ),
+                content=column,
             )
+
+            def refresh():
+                visible = [
+                    card for item_id, card in cards.items() if (item_id not in selected) == add
+                ]
+                caption.value = f"{'카탈로그' if add else '선택됨'} · {len(visible)}"
+                column.controls = [caption, hint, *(visible or [empty])]
+                box.bgcolor = BG
 
             def highlight(event):
                 box.bgcolor = TINT if event.accept else BG
@@ -279,7 +309,7 @@ class TrainingView:
             def accept(event):
                 move(event.src.data, not add)
 
-            return ft.Container(
+            area = ft.Container(
                 expand=True,
                 content=ft.DragTarget(
                     group=f"{kind}:{not add}",
@@ -289,9 +319,17 @@ class TrainingView:
                     on_accept=accept,
                 ),
             )
+            return area, refresh
 
-        def refresh():
-            lists.controls = [drop_area(True), drop_area(False)]
+        catalog, refresh_catalog = drop_area(True)
+        chosen, refresh_chosen = drop_area(False)
 
-        refresh()
-        return panel([title(label, 16), lists], padding=12, spacing=8)
+        def bind(next_selected):
+            nonlocal selected
+            selected = next_selected
+            refresh_catalog()
+            refresh_chosen()
+
+        bind(selected)
+        lists = ft.Row([catalog, chosen], spacing=10, vertical_alignment=ft.CrossAxisAlignment.START)
+        return panel([title(label, 16), lists], padding=12, spacing=8), bind

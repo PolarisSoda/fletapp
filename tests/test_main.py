@@ -53,6 +53,40 @@ def test_training_catalog_supports_both_drop_directions(tmp_path):
     assert selected == []
 
 
+def test_training_selection_reuses_controls_and_edits_the_selected_draft(tmp_path):
+    store = ExperimentStore(tmp_path / "experiments.json")
+    first, second = store.experiments[:2]
+    view = TrainingView(None, store, lambda: None)
+    screen = view.build().content
+    experiments, details, parameters = screen.controls[1].controls
+    first_tile, second_tile = experiments.content.controls[1:3]
+    name, datasets, _ = details.controls
+    lists = datasets.content.controls[1]
+    available, chosen = (side.content for side in lists.controls)
+    epoch = parameters.content.controls[1]
+    epoch.on_change(SimpleNamespace(control=SimpleNamespace(value="41")))
+
+    second_tile.on_click(None)
+
+    assert view.content.content is screen
+    assert lists.controls[0].content is available
+    assert lists.controls[1].content is chosen
+    assert not first_tile.selected and second_tile.selected
+    assert name.value == second.name
+    assert epoch.value == str(second.parameters["--epoch"])
+    card = available.content.content.controls[2]
+    assert card.data == "pets"
+    chosen.on_will_accept(SimpleNamespace(accept=True))
+    chosen.on_accept(SimpleNamespace(src=card))
+    assert view.drafts[second.id].datasets == ["cifar", "pets"]
+    assert view.drafts[first.id].datasets == ["pets"]
+
+    first_tile.on_click(None)
+    assert first_tile.selected and not second_tile.selected
+    assert epoch.value == "41"
+    assert [card.data for card in chosen.content.content.controls[2:]] == ["pets"]
+
+
 def test_training_domains_keep_legacy_experiments_and_unsaved_drafts(tmp_path):
     path = tmp_path / "experiments.json"
     path.write_text(json.dumps([
