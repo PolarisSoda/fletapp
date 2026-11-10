@@ -1,12 +1,12 @@
 import flet as ft
 
-from backend.experiments import ExperimentStore
+from backend.experiments import ANIMALS, ExperimentStore
 from backend.results import ASSETS
 from ui.automation import AutomationView
 from ui.common import BASE_SEED, BG, NAV, NAV_SELECTED, badge
 from ui.home import build_home
 from ui.results import ResultsView
-from ui.training import TRAINING_SEEDS, TrainingView
+from ui.training import TRAINING_SEEDS, TrainingScreen, TrainingState
 
 
 NAVIGATION = (
@@ -30,32 +30,13 @@ def main(page: ft.Page, store: ExperimentStore | None = None):
 
     store = store if store is not None else ExperimentStore()
     results = ResultsView()
-    active = 0
-    sidebar = ft.Container(
-        width=194, padding=ft.Padding.symmetric(vertical=20, horizontal=14), bgcolor=NAV
-    )
-    body = ft.Container(expand=True, padding=ft.Padding.only(left=22, top=22, right=22))
 
-    def apply_theme():
-        seed = TRAINING_SEEDS[training.domain] if active == 1 else BASE_SEED
+    def apply_theme(seed):
         page.theme = ft.Theme(color_scheme_seed=seed)
         page.dark_theme = ft.Theme(color_scheme_seed=seed)
 
-    def toggle_theme(_):
-        dark = page.theme_mode == ft.ThemeMode.DARK
-        page.theme_mode = ft.ThemeMode.LIGHT if dark else ft.ThemeMode.DARK
-        render_sidebar()
-
-    def navigate(index):
-        nonlocal active
-        active = index
-        apply_theme()
-        render_sidebar()
-        render_view()
-
-    def render_sidebar():
-        dark = page.theme_mode == ft.ThemeMode.DARK
-        sidebar.content = ft.Column(
+    def build_sidebar(active, dark, navigate, toggle_theme):
+        content = ft.Column(
             [
                 ft.Row(
                     [
@@ -108,31 +89,60 @@ def main(page: ft.Page, store: ExperimentStore | None = None):
             ],
             spacing=6,
         )
+        return ft.Container(
+            width=194, padding=ft.Padding.symmetric(vertical=20, horizontal=14),
+            bgcolor=NAV, content=content,
+        )
 
-    def render_view():
+    @ft.component
+    def Workbench():
+        active, set_active = ft.use_state(0)
+        domain, set_domain = ft.use_state(ANIMALS)
+        dark, set_dark = ft.use_state(False)
+        _, set_revision = ft.use_state(0)
+        training = ft.use_memo(TrainingState, [])
+
+        def refresh():
+            set_revision(lambda revision: revision + 1)
+
+        automation = ft.use_memo(lambda: AutomationView(page, store, refresh), [])
+
+        def navigate(index):
+            apply_theme(TRAINING_SEEDS[domain] if index == 1 else BASE_SEED)
+            set_active(index)
+
+        def change_domain(next_domain):
+            apply_theme(TRAINING_SEEDS[next_domain])
+            set_domain(next_domain)
+
+        def toggle_theme(_):
+            next_dark = page.theme_mode != ft.ThemeMode.DARK
+            page.theme_mode = ft.ThemeMode.DARK if next_dark else ft.ThemeMode.LIGHT
+            set_dark(next_dark)
+
         builders = (
             lambda: build_home(store, navigate),
-            training.build,
+            lambda: TrainingScreen(store, training, domain, change_domain),
             automation.build,
-            lambda: results.build(render_view),
+            lambda: results.build(refresh),
         )
-        body.content = builders[active]()
-
-    def refresh_automation():
-        if active == 2:
-            render_view()
-
-    training = TrainingView(page, store, apply_theme)
-    automation = AutomationView(page, store, refresh_automation)
-    navigate(0)
-    page.add(
-        ft.Row(
-            [sidebar, body],
+        return ft.Row(
+            [
+                build_sidebar(active, dark, navigate, toggle_theme),
+                ft.Container(
+                    key=f"screen-{active}",
+                    content=builders[active](),
+                    expand=True,
+                    padding=ft.Padding.only(left=22, top=22, right=22),
+                ),
+            ],
             expand=True,
             spacing=0,
             vertical_alignment=ft.CrossAxisAlignment.STRETCH,
         )
-    )
+
+    apply_theme(BASE_SEED)
+    page.render(Workbench)
 
 
 if __name__ == "__main__":

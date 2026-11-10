@@ -1,14 +1,21 @@
+import asyncio
 import json
 from pathlib import Path
-from types import SimpleNamespace
 
 import flet as ft
+import msgpack
 import pytest
+from flet.controls.base_control import BaseControl
+from flet.messaging.protocol import configure_encode_object_for_msgpack
+from flet.messaging.session import Session
+from flet.pubsub.pubsub_hub import PubSubHub
 
 from backend.automation import STEPS, JobQueue
 from backend.experiments import ANIMALS, PLANTS, ExperimentStore
 from backend.results import ASSETS, load_predictions
-from ui.training import TrainingView
+from main import main
+from ui.common import BG, TINT
+from ui.training import TRAINING_SEEDS
 
 
 def test_experiment_settings_survive_reload(tmp_path):
@@ -34,60 +41,115 @@ def test_experiment_settings_survive_reload(tmp_path):
     assert ExperimentStore(path).experiments[-1].parameters["--epoch"] == 5
 
 
-def test_training_catalog_supports_both_drop_directions(tmp_path):
-    view = TrainingView(None, ExperimentStore(tmp_path / "experiments.json"), lambda: None)
-    selected = []
-    section = view.catalog_section("models", "모델", selected)
-    lists = section.content.controls[1]
-    catalog, chosen = (column.content for column in lists.controls)
-    model = catalog.content.content.controls[2]
-    assert isinstance(model, ft.Draggable)
-    assert model.group == chosen.group
-    chosen.on_accept(SimpleNamespace(src=model))
-    assert selected == ["resnet"]
+class Wire:
+    def __init__(self):
+        self.errors = []
+        self.pubsubhub = PubSubHub()
 
-    catalog, chosen = (column.content for column in lists.controls)
-    model = chosen.content.content.controls[2]
-    assert model.group == catalog.group
-    catalog.on_accept(SimpleNamespace(src=model))
-    assert selected == []
+    def send_message(self, message):
+        msgpack.packb(message, default=encode)
+        if message.action.name == "SESSION_CRASHED":
+            self.errors.append(message.body)
 
 
-def test_training_selection_reuses_controls_and_edits_the_selected_draft(tmp_path):
+encode = configure_encode_object_for_msgpack(BaseControl)
+
+
+@pytest.fixture
+async def workbench():
+    wire = Wire()
+    session = Session(wire)
+    session.attach_connection(wire)
+    msgpack.packb(session.get_page_patch(), default=encode)
+    yield session
+
+    session.close()
+    await asyncio.sleep(0)
+    assert not wire.errors, wire.errors
+
+
+async def event(session, control, name, payload=None, **props):
+    assert session.index.get(control._i) is control
+    if props:
+        session.apply_patch(control._i, props)
+    await session.dispatch_event(control._i, name, payload)
+    for _ in range(4):
+        await asyncio.sleep(0)
+
+
+def layout(session):
+    return ft.unwrap_component(session.page.controls).controls
+
+
+def training(session):
+    return ft.unwrap_component(layout(session)[1].content)
+
+
+def details(session):
+    return [ft.unwrap_component(child) for child in training(session).controls[1].controls]
+
+
+def targets(catalogs, index):
+    row = catalogs.controls[index].content.controls[1]
+    return [ft.unwrap_component(area).content for area in row.controls]
+
+
+def cards(target):
+    return {
+        card.data: card for card in target.content.content.controls[2:]
+        if isinstance(card, ft.Draggable)
+    }
+
+
+async def enter_training(session):
+    await event(session, layout(session)[0].content.controls[3], "click")
+
+
+async def drop(session, source, target):
+    assert source.group == target.group
+    offset = {"x": 0, "y": 0}
+    await event(session, target, "accept", {"src_id": source._i, "l": offset, "g": offset})
+
+
+async def test_training_selection_rebinds_catalog_and_parameter_events(tmp_path, workbench):
     store = ExperimentStore(tmp_path / "experiments.json")
     first, second = store.experiments[:2]
-    view = TrainingView(None, store, lambda: None)
-    screen = view.build().content
-    experiments, details, parameters = screen.controls[1].controls
-    first_tile, second_tile = experiments.content.controls[1:3]
-    name, datasets, _ = details.controls
-    lists = datasets.content.controls[1]
-    available, chosen = (side.content for side in lists.controls)
+    main(workbench.page, store)
+    await enter_training(workbench)
+    experiments, catalogs, parameters = details(workbench)
     epoch = parameters.content.controls[1]
-    epoch.on_change(SimpleNamespace(control=SimpleNamespace(value="41")))
+    await event(workbench, epoch, "change", value="41")
+    await event(workbench, experiments.content.controls[2], "click")
 
-    second_tile.on_click(None)
+    experiments, catalogs, parameters = details(workbench)
+    assert [tile.selected for tile in experiments.content.controls[1:3]] == [False, True]
+    assert catalogs.controls[0].value == second.name
+    assert parameters.content.controls[1].value == str(second.parameters["--epoch"])
 
-    assert view.content.content is screen
-    assert lists.controls[0].content is available
-    assert lists.controls[1].content is chosen
-    assert not first_tile.selected and second_tile.selected
-    assert name.value == second.name
-    assert epoch.value == str(second.parameters["--epoch"])
-    card = available.content.content.controls[2]
-    assert card.data == "pets"
-    chosen.on_will_accept(SimpleNamespace(accept=True))
-    chosen.on_accept(SimpleNamespace(src=card))
-    assert view.drafts[second.id].datasets == ["cifar", "pets"]
-    assert view.drafts[first.id].datasets == ["pets"]
+    available, chosen = targets(catalogs, 1)
+    source = cards(available)["pets"]
+    await event(workbench, chosen, "will_accept", {"accept": True, "src_id": source._i})
+    available, chosen = targets(details(workbench)[1], 1)
+    assert chosen.content.bgcolor == TINT
+    await event(workbench, chosen, "leave", {"src_id": source._i})
+    available, chosen = targets(details(workbench)[1], 1)
+    assert chosen.content.bgcolor == BG
+    await drop(workbench, cards(available)["pets"], chosen)
+    available, chosen = targets(details(workbench)[1], 1)
+    assert list(cards(chosen)) == ["pets", "cifar"]
 
-    first_tile.on_click(None)
-    assert first_tile.selected and not second_tile.selected
-    assert epoch.value == "41"
-    assert [card.data for card in chosen.content.content.controls[2:]] == ["pets"]
+    await drop(workbench, cards(chosen)["pets"], available)
+    assert list(cards(targets(details(workbench)[1], 1)[1])) == ["cifar"]
+
+    await event(workbench, details(workbench)[0].content.controls[1], "click")
+    _, catalogs, parameters = details(workbench)
+    assert catalogs.controls[0].value == first.name
+    assert parameters.content.controls[1].value == "41"
+    assert list(cards(targets(catalogs, 1)[1])) == ["pets"]
+    assert first.parameters["--epoch"] == 20
 
 
-def test_training_domains_keep_legacy_experiments_and_unsaved_drafts(tmp_path):
+async def test_training_domains_keep_legacy_experiments_and_unsaved_drafts(tmp_path, workbench):
     path = tmp_path / "experiments.json"
     path.write_text(json.dumps([
         {"id": "mixed", "name": "이전 실험", "datasets": ["pets", "flowers"]},
@@ -95,26 +157,91 @@ def test_training_domains_keep_legacy_experiments_and_unsaved_drafts(tmp_path):
     ]), encoding="utf-8")
     store = ExperimentStore(path)
     assert [row.domain for row in store.experiments] == [PLANTS, ANIMALS]
-    assert ExperimentStore(path).create("새 식물 실험", PLANTS).domain == PLANTS
+    assert store.create("새 식물 실험", PLANTS).domain == PLANTS
     assert ExperimentStore(path).experiments[-1].domain == PLANTS
 
-    themes = []
-    view = TrainingView(None, store, lambda: themes.append(view.domain))
-    view.build()
-    view.drafts["pet"].parameters["--epoch"] = "41"
-    toggle = view.domain_switch().controls[1]
-    toggle.on_change(SimpleNamespace(control=SimpleNamespace(value=True)))
-    assert list(view.drafts) == ["pet", "mixed"]
-    lists = view.catalog_section("datasets", "데이터셋", view.drafts["mixed"].datasets)
-    catalog, selected = (column.content for column in lists.content.controls[1].controls)
-    assert [item.data for item in catalog.content.content.controls[2:]] == [
-        "plant-village", "leaf-types"
-    ]
-    assert [item.data for item in selected.content.content.controls[2:]] == ["pets", "flowers"]
+    main(workbench.page, store)
+    await enter_training(workbench)
+    await event(workbench, details(workbench)[2].content.controls[1], "change", value="41")
 
-    toggle.on_change(SimpleNamespace(control=SimpleNamespace(value=False)))
-    assert themes == [PLANTS, ANIMALS]
-    assert view.drafts["pet"].parameters["--epoch"] == "41"
+    def domain_switch():
+        return training(workbench).controls[0].controls[1].controls[1]
+
+    await event(workbench, domain_switch(), "change", value=True)
+    assert workbench.page.theme.color_scheme_seed == TRAINING_SEEDS[PLANTS]
+    available, chosen = targets(details(workbench)[1], 1)
+    assert list(cards(available)) == ["plant-village", "leaf-types"]
+    assert list(cards(chosen)) == ["pets", "flowers"]
+
+    await event(workbench, layout(workbench)[0].content.controls[2], "click")
+    await enter_training(workbench)
+    assert domain_switch().value is True
+    await event(workbench, domain_switch(), "change", value=False)
+    assert workbench.page.theme.color_scheme_seed == TRAINING_SEEDS[ANIMALS]
+    assert details(workbench)[2].content.controls[1].value == "41"
+
+
+async def test_training_creates_experiments_and_validates_before_saving(tmp_path, workbench):
+    path = tmp_path / "experiments.json"
+    store = ExperimentStore(path)
+    main(workbench.page, store)
+    await enter_training(workbench)
+
+    def create_button():
+        return ft.unwrap_component(details(workbench)[0].content.controls[-1])
+
+    def current_dialog():
+        return next(dialog for dialog in workbench.page._dialogs.controls
+                    if isinstance(dialog, ft.AlertDialog) and dialog.open)
+
+    await event(workbench, create_button(), "click")
+    await event(workbench, current_dialog().actions[1], "click")
+    assert current_dialog().content.error == "실험 이름을 입력하세요."
+    await event(workbench, current_dialog().content, "submit", value="추가 실험")
+    assert details(workbench)[1].controls[0].value == "추가 실험"
+    assert ExperimentStore(path).experiments[-1].name == "추가 실험"
+    assert not any(isinstance(dialog, ft.AlertDialog) and dialog.open
+                   for dialog in workbench.page._dialogs.controls)
+
+    await event(workbench, create_button(), "click")
+    assert current_dialog().content.value == ""
+    await event(workbench, current_dialog().actions[0], "click")
+
+    def fields():
+        return details(workbench)[2].content.controls
+
+    await event(workbench, fields()[1], "change", value="0")
+    await event(workbench, fields()[-1], "click")
+    assert fields()[1].error == "에폭 값을 확인하세요."
+    assert ExperimentStore(path).experiments[-1].parameters["--epoch"] == 20
+    await event(workbench, fields()[1], "change", value="42")
+    await event(workbench, fields()[-1], "click")
+    assert fields()[1].error is None
+    assert ExperimentStore(path).experiments[-1].parameters["--epoch"] == 42
+
+
+async def test_workbench_navigation_keeps_results_and_automation_interactive(tmp_path, workbench):
+    main(workbench.page, ExperimentStore(tmp_path / "experiments.json"))
+
+    def sidebar():
+        return layout(workbench)[0].content.controls
+
+    def screen():
+        return ft.unwrap_component(layout(workbench)[1].content)
+
+    await event(workbench, sidebar()[7], "click")
+    assert workbench.page.theme_mode == ft.ThemeMode.DARK
+
+    await event(workbench, sidebar()[4], "click")
+    enqueue = screen().controls[1].content.controls[1].controls[1]
+    await event(workbench, enqueue, "click")
+    assert len(screen().controls[2].content.controls) == 2
+
+    await event(workbench, sidebar()[5], "click")
+    filter_switch = screen().controls[2].controls[0].content.controls[0].controls[1]
+    await event(workbench, filter_switch, "change", value=True)
+    table = screen().controls[2].controls[0].content.controls[1].controls[0]
+    assert len(table.rows) == sum(not row.correct for row in load_predictions())
 
 
 def test_automation_runs_a_snapshot_of_the_saved_settings(tmp_path):
