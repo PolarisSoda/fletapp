@@ -42,7 +42,7 @@ def panel(controls, *, width=None, expand=None, padding=18, spacing=12):
     )
 
 
-def heading(index, name, description):
+def heading(index, name, description, *, expand=None):
     return ft.Column(
         [
             ft.Text(f"WORKSPACE  /  {index}", size=11, color=ACCENT, weight=ft.FontWeight.W_700),
@@ -50,6 +50,7 @@ def heading(index, name, description):
             muted(description, 14),
         ],
         spacing=5,
+        expand=expand,
     )
 
 

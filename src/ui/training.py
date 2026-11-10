@@ -17,7 +17,7 @@ class TrainingView:
         self.domain = ANIMALS
         self.selection = {}
         self.drafts = {}
-        self.content = ft.Container(expand=True)
+        self.content = view()
         self._experiment_tiles = {}
         self._bind_details = None
 
@@ -75,21 +75,22 @@ class TrainingView:
                     parameters,
                 ]
             )
-        self.content.content = view(
+        self._experiment_row = ft.Row(
+            controls, spacing=14, vertical_alignment=ft.CrossAxisAlignment.START
+        )
+        self.content.controls = [
             ft.Row(
                 [
-                    ft.Container(
-                        content=heading(
-                            "01", "학습 실험", "데이터셋과 모델을 조합하고 학습 파라미터를 저장하세요."
-                        ),
+                    heading(
+                        "01", "학습 실험", "데이터셋과 모델을 조합하고 학습 파라미터를 저장하세요.",
                         expand=True,
                     ),
                     self.domain_switch(),
                 ],
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
             ),
-            ft.Row(controls, spacing=14, vertical_alignment=ft.CrossAxisAlignment.START),
-        )
+            self._experiment_row,
+        ]
 
     def domain_switch(self):
         plant_mode = self.domain == PLANTS
@@ -126,6 +127,8 @@ class TrainingView:
         for item in self._experiment_tiles.values():
             item.selected = item is tile
         self._bind_details(self.drafts.setdefault(experiment.id, deepcopy(experiment)))
+        if self.page is not None:
+            self._experiment_row.update()
 
     def create(self, _):
         name = ft.TextField(label="실험 이름", autofocus=True, max_length=60, width=340)
@@ -135,10 +138,11 @@ class TrainingView:
                 experiment = self.store.create(name.value or "", self.domain)
             except (ValueError, OSError) as error:
                 name.error = str(error)
+                name.update()
                 return
             self.page.pop_dialog()
             self.select(experiment)
-            self.page.update()
+            self.content.update()
             notify(self.page, "새 실험을 추가했습니다.")
 
         name.on_submit = confirm
@@ -159,18 +163,21 @@ class TrainingView:
 
         def save(_):
             valid = True
+            changed_fields = []
             for parameter in PARAMETERS:
                 field = fields[parameter.flag]
                 draft.parameters[parameter.flag] = field.value
+                message = None
                 try:
                     parameter.parse(field.value)
-                    if isinstance(field, ft.TextField):
-                        field.error = None
                 except ValueError as error:
-                    if isinstance(field, ft.TextField):
-                        field.error = str(error)
+                    message = str(error)
                     valid = False
-            self.page.update()
+                if isinstance(field, ft.TextField) and field.error != message:
+                    field.error = message
+                    changed_fields.append(field)
+            if changed_fields:
+                self.page.update(*changed_fields)
             if not valid:
                 notify(self.page, "파라미터 값을 확인하세요.")
                 return
@@ -240,6 +247,8 @@ class TrainingView:
             elif not add and item_id in selected:
                 selected.remove(item_id)
             bind(selected)
+            if self.page is not None:
+                lists.update()
 
         def tile(item, add):
             return ft.Container(
@@ -272,9 +281,7 @@ class TrainingView:
                     group=f"{kind}:{add}",
                     data=item.id,
                     content=tile(item, add),
-                    content_feedback=ft.Container(
-                        content=badge(item.name), padding=4, bgcolor=SURFACE, border_radius=10
-                    ),
+                    content_feedback=badge(item.name, background=SURFACE),
                 )
                 for item in CATALOG[kind]
                 if not add or item.domain in (None, self.domain)
@@ -302,22 +309,24 @@ class TrainingView:
 
             def highlight(event):
                 box.bgcolor = TINT if event.accept else BG
+                if self.page is not None:
+                    box.update()
 
             def leave(_):
                 box.bgcolor = BG
+                if self.page is not None:
+                    box.update()
 
             def accept(event):
                 move(event.src.data, not add)
 
-            area = ft.Container(
+            area = ft.DragTarget(
                 expand=True,
-                content=ft.DragTarget(
-                    group=f"{kind}:{not add}",
-                    content=box,
-                    on_will_accept=highlight,
-                    on_leave=leave,
-                    on_accept=accept,
-                ),
+                group=f"{kind}:{not add}",
+                content=box,
+                on_will_accept=highlight,
+                on_leave=leave,
+                on_accept=accept,
             )
             return area, refresh
 

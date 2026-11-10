@@ -39,14 +39,14 @@ def test_training_catalog_supports_both_drop_directions(tmp_path):
     selected = []
     section = view.catalog_section("models", "모델", selected)
     lists = section.content.controls[1]
-    catalog, chosen = (column.content for column in lists.controls)
+    catalog, chosen = lists.controls
     model = catalog.content.content.controls[2]
     assert isinstance(model, ft.Draggable)
     assert model.group == chosen.group
     chosen.on_accept(SimpleNamespace(src=model))
     assert selected == ["resnet"]
 
-    catalog, chosen = (column.content for column in lists.controls)
+    catalog, chosen = lists.controls
     model = chosen.content.content.controls[2]
     assert model.group == catalog.group
     catalog.on_accept(SimpleNamespace(src=model))
@@ -57,20 +57,20 @@ def test_training_selection_reuses_controls_and_edits_the_selected_draft(tmp_pat
     store = ExperimentStore(tmp_path / "experiments.json")
     first, second = store.experiments[:2]
     view = TrainingView(None, store, lambda: None)
-    screen = view.build().content
+    screen = view.build()
     experiments, details, parameters = screen.controls[1].controls
     first_tile, second_tile = experiments.content.controls[1:3]
     name, datasets, _ = details.controls
     lists = datasets.content.controls[1]
-    available, chosen = (side.content for side in lists.controls)
+    available, chosen = lists.controls
     epoch = parameters.content.controls[1]
     epoch.on_change(SimpleNamespace(control=SimpleNamespace(value="41")))
 
     second_tile.on_click(None)
 
-    assert view.content.content is screen
-    assert lists.controls[0].content is available
-    assert lists.controls[1].content is chosen
+    assert view.content is screen
+    assert lists.controls[0] is available
+    assert lists.controls[1] is chosen
     assert not first_tile.selected and second_tile.selected
     assert name.value == second.name
     assert epoch.value == str(second.parameters["--epoch"])
@@ -106,7 +106,7 @@ def test_training_domains_keep_legacy_experiments_and_unsaved_drafts(tmp_path):
     toggle.on_change(SimpleNamespace(control=SimpleNamespace(value=True)))
     assert list(view.drafts) == ["pet", "mixed"]
     lists = view.catalog_section("datasets", "데이터셋", view.drafts["mixed"].datasets)
-    catalog, selected = (column.content for column in lists.content.controls[1].controls)
+    catalog, selected = lists.content.controls[1].controls
     assert [item.data for item in catalog.content.content.controls[2:]] == [
         "plant-village", "leaf-types"
     ]
