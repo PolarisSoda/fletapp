@@ -5,8 +5,8 @@ resolution-markers = [
     "python_full_version >= '3.12' and platform_machine == 'ARM64' and sys_platform == 'win32'",
     "(python_full_version >= '3.12' and platform_machine != 'ARM64') or (python_full_version >= '3.12' and sys_platform != 'win32')",
     "(python_full_version == '3.11.*' and platform_machine != 'ARM64') or (python_full_version == '3.11.*' and sys_platform != 'win32')",
-    "(python_full_version < '3.11' and platform_machine != 'ARM64') or (python_full_version < '3.11' and sys_platform != 'win32')",
     "python_full_version == '3.11.*' and platform_machine == 'ARM64' and sys_platform == 'win32'",
+    "(python_full_version < '3.11' and platform_machine != 'ARM64') or (python_full_version < '3.11' and sys_platform != 'win32')",
     "python_full_version < '3.11' and platform_machine == 'ARM64' and sys_platform == 'win32'",
 ]
 
@@ -402,6 +402,17 @@ sdist = { url = "https://files.pythonhosted.org/packages/ba/e0/0d21c89b5f802452f
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f3/55/98c898a9e13d60492939188190f35a449df0c6d37fcd8d9a8381118010af/flet_platform_assets-1.1.2-py3-none-any.whl", hash = "sha256:c1214f2e3b9df3243fca288d36b8b19e520468f2975f70d602db568f650314b9", size = 27943, upload-time = "2026-11-06T23:28:52.505Z" },
 ]
+
+[[package]]
+name = "flet-virtual-table"
+version = "0.2.0"
+source = { directory = "../../../flet-virtual-table" }
+dependencies = [
+    { name = "flet" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "flet", specifier = ">=1.1.2,<1.2" }]
 
 [[package]]
 name = "flet-web"
@@ -917,6 +928,7 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "flet" },
+    { name = "flet-virtual-table" },
 ]
 
 [package.dev-dependencies]
@@ -928,7 +940,10 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "flet", specifier = ">=1.1.2" }]
+requires-dist = [
+    { name = "flet", specifier = ">=1.1.2" },
+    { name = "flet-virtual-table", directory = "../../../flet-virtual-table" },
+]
 
 [package.metadata.requires-dev]
 dev = [
