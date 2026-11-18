@@ -8,6 +8,7 @@ authors = [
     { name = "Flet developer", email = "you@example.com" }
 ]
 dependencies = [
+    "flet-virtual-table",
     "flet>=1.1.2"
 ]
 
@@ -41,3 +42,9 @@ copyright = "Copyright (C) 2023-2026 by Flet"
 
 [tool.flet.app]
 path = "src"
+
+[tool.uv.sources]
+flet-virtual-table = { path = "../../../flet-virtual-table" }
+
+[tool.flet.dev_packages]
+flet-virtual-table = "../../../flet-virtual-table"
