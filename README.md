@@ -2,9 +2,16 @@
 
 이미지 분류 실험을 구성하는 Windows 데스크톱 앱입니다.
 
+앱과 가상화 확장을 같은 상위 폴더에 클론하세요. 확장 폴더 이름은
+`flet-virtual-table`이어야 하며, `pyproject.toml`과 `uv.lock`은 이 상대 경로를 사용합니다.
+
 ```powershell
+git clone https://github.com/PolarisSoda/flet_datagrid.git flet-virtual-table
+git clone https://github.com/PolarisSoda/fletapp.git
+cd fletapp
 uv sync
-uv run flet run src/main.py
+uv run flet build web --module-name main --yes
+uv run flet serve build/web
 ```
 
 - **학습 실험**에서 새 실험을 만들고 데이터셋과 모델을 카탈로그와 선택 목록 사이에서 끌어 옮길 수 있습니다. 파라미터를 편집한 뒤 **설정 저장**을 누르면 `%LOCALAPPDATA%\ModelWorkbench\experiments.json`에 기록됩니다.

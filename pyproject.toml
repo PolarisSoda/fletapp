@@ -44,7 +44,7 @@ copyright = "Copyright (C) 2023-2026 by Flet"
 path = "src"
 
 [tool.uv.sources]
-flet-virtual-table = { path = "../../../flet-virtual-table" }
+flet-virtual-table = { path = "../flet-virtual-table" }
 
 [tool.flet.dev_packages]
-flet-virtual-table = "../../../flet-virtual-table"
+flet-virtual-table = "../flet-virtual-table"
