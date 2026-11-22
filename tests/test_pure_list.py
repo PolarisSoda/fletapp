@@ -29,9 +29,10 @@ def guarded(name,*args,**kwargs):
     return original(name,*args,**kwargs)
 builtins.__import__=guarded
 from ui.pure_list import PureListView
-screen=PureListView()
-screen.build()
-assert screen.control.model.count == 500000
+for native in (False, True):
+    screen=PureListView(native=native)
+    screen.build()
+    assert screen.control.model.count == 500000
 '''
     subprocess.run([sys.executable, "-c", script, str(source)], check=True)
 
@@ -128,9 +129,9 @@ async def test_pure_navigation_scroll_selection_and_small_updates(tmp_path):
             assert control().model.first == before + (1 if delta > 0 else -1)
             assert max(wire.sizes) < 120_000
         grid = control()
-        await session.dispatch_event(grid.gestures._i, "tap_down", {
-            "l": {"x": 100, "y": 60}, "g": {"x": 100, "y": 60},
-        })
+        assert grid.gestures.on_tap_down is None
+        row_hit = next(c for c in grid.canvas.content.controls if c.key == "canvas-row-1")
+        await session.dispatch_event(row_hit._i, "click", None)
         await settle()
         assert control().model.selected_count == 1
         await navigate(0)
@@ -168,9 +169,8 @@ async def test_pure_navigation_scroll_selection_and_small_updates(tmp_path):
 
         with patch("backend.list_window.asyncio.to_thread", worker):
             grid = control()
-            task = asyncio.create_task(session.dispatch_event(grid.gestures._i, "tap_down", {
-                "l": {"x": 100, "y": 20}, "g": {"x": 100, "y": 20},
-            }))
+            heading = next(c for c in grid.canvas.content.controls if c.key == "canvas-sort-0")
+            task = asyncio.create_task(session.dispatch_event(heading._i, "click", None))
             await asyncio.wait_for(started.wait(), 1)
             await navigate(0)
             finish.set()
@@ -184,3 +184,28 @@ async def test_pure_navigation_scroll_selection_and_small_updates(tmp_path):
     finally:
         session.close()
         await settle()
+
+
+def test_canvas_hit_targets_keep_painted_row_identity_and_support_real_controls():
+    screen = PureListView()
+    screen.build()
+    control = screen.control
+    control.move(100)
+    painted_row = next(c for c in control.canvas.content.controls if c.key == "canvas-row-100")
+    # Input may arrive after another scroll event updated the logical viewport.
+    control.model.move(500)
+    painted_row.on_click(None)
+    assert control.model.selected(100)
+    assert not control.model.selected(500)
+    assert control.gestures.on_tap_down is None
+
+    control.model.rich_cells = True
+    screen.rebuild()
+    overlay = next(c for c in screen.control.canvas.content.controls if c.key == "canvas-cell-500-1")
+    assert isinstance(overlay.content, ft.Row)
+    assert isinstance(overlay.content.controls[1], ft.Column)
+    button = overlay.content.controls[-1]
+    selected_before = screen.model.selected_count
+    button.on_click(None)
+    assert screen.model.cell_actions[500] == 1
+    assert screen.model.selected_count == selected_before

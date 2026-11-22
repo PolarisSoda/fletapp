@@ -144,6 +144,23 @@ async def test_navigation_sends_bounded_patches_and_keeps_selection(tmp_path):
             table = screen().controls[2].content
             assert table.response["rows"][0] == list(row_values(ROW_COUNT - 1))
             assert not wire.errors, wire.errors
+            # Each remounted Flutter client uses a new request ID even when
+            # requesting the exact same top window. Every reply must be sent.
+            for visit in range(12):
+                await navigate(5)
+                await navigate(6)
+                await navigate(4)
+                table = screen().controls[2].content
+                if not session.components_mode:
+                    assert table._attached
+                wire.sizes.clear()
+                await session.dispatch_event(table._i, "range_request", dict(
+                    revision=table.revision, start=0, count=72, request_id=1000 + visit,
+                ))
+                await settle()
+                table = screen().controls[2].content
+                assert table.response["request_id"] == 1000 + visit
+                assert wire.sizes and not wire.errors
     finally:
         session.close()
         await settle()

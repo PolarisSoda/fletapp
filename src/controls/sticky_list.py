@@ -1,7 +1,8 @@
 """Pure Flet viewport: Canvas cells, row wheel steps, and an independent scrollbar.
 
 No custom Flutter extension, HTML, JavaScript or virtual-table imports. Only
-visible values enter the control tree. Canvas cells are text, not editable widgets.
+visible values enter the control tree. Optional cell_builder controls are placed
+over Canvas cells; hit targets use native controls, not inferred pointer offsets.
 """
 import time
 
@@ -13,24 +14,26 @@ from backend.list_window import ListWindow, wheel_step
 
 class StickyListView(ft.Container):
     def __init__(self, columns, records, row_builder, *, column_widths=None,
-                 numeric_columns=(), sort_keys=None, model=None, on_change=None, **kwargs):
+                 numeric_columns=(), sort_keys=None, model=None, on_change=None,
+                 cell_builder=None, row_height=38, heading_height=46, **kwargs):
         self.model = model if model is not None else ListWindow(records, row_builder, sort_keys=sort_keys)
         self.labels = tuple(columns)
         self.widths = tuple(column_widths or [140] * len(columns))
         if not self.labels or len(self.widths) != len(self.labels) or any(w < 60 for w in self.widths):
             raise ValueError("Provide a width of at least 60 for every column")
         self.numeric = set(numeric_columns)
-        self.row_height, self.heading_height = 38, 46
+        if row_height < 20 or heading_height < 20:
+            raise ValueError("Row and heading heights must be at least 20")
+        self.row_height, self.heading_height = row_height, heading_height
+        self.model.resize(self.model.height, row_height, heading_height)
         self.table_width = 52 + sum(self.widths)
         self.on_model_change = on_change
+        self.cell_builder = cell_builder
         self._attached = False
         self.last_draw_ms = 0
-        self.canvas = cv.Canvas(
-            key="pure-list-canvas", width=self.table_width, height=float("inf"),
-            shapes=self.draw(), on_resize=self.resize, resize_interval=50,
-        )
+        self.canvas = self.create_surface()
         self.gestures = ft.GestureDetector(
-            content=self.canvas, on_scroll=self.wheel, on_tap_down=self.tap,
+            content=self.canvas, on_scroll=self.wheel,
             width=self.table_width, height=float("inf"), key="pure-list-input",
         )
         self.track = cv.Canvas(
@@ -75,6 +78,66 @@ class StickyListView(ft.Container):
     def will_unmount(self):
         self._attached = False
 
+    def create_surface(self):
+        return cv.Canvas(
+            key="pure-list-canvas", width=self.table_width, height=float("inf"),
+            shapes=self.draw(), content=self.overlay(), on_resize=self.resize, resize_interval=50,
+        )
+
+    def overlay(self):
+        """Native bounds share the painter's origin; IDs bind the painted record.
+
+        A cell control is a sibling above its row hit target. Its own buttons and
+        fields therefore receive input without also toggling row selection.
+        """
+        hits = [self.hit_box("전체 선택", self.toggle_all, 0, 0, 52, self.heading_height,
+                             key="canvas-select-all")]
+        x = 52
+        for col, width in enumerate(self.widths):
+            async def sort(_, column=col):
+                await self.sort_column(column)
+            hits.append(self.hit_box(f"{self.labels[col]} 정렬", sort, x, 0, width, self.heading_height,
+                                     key=f"canvas-sort-{col}"))
+            x += width
+        for slot, (row_id, values) in enumerate(self.model.rows()):
+            y = self.heading_height + slot * self.row_height
+            hits.append(self.hit_box(f"행 {row_id + 1} 선택", lambda _, rid=row_id: self.select_row(rid),
+                                     0, y, self.table_width, self.row_height, key=f"canvas-row-{row_id}"))
+            if self.cell_builder is not None:
+                x = 52
+                for col, width in enumerate(self.widths):
+                    content = self.cell_builder(self.model.records[row_id], row_id, col)
+                    if content is not None:
+                        hits.append(ft.Container(
+                            content=content, left=x, top=y, width=width, height=self.row_height,
+                            padding=ft.Padding.symmetric(horizontal=8), bgcolor="#D5E8FA" if self.model.selected(row_id) else "white",
+                            clip_behavior=ft.ClipBehavior.HARD_EDGE, key=f"canvas-cell-{row_id}-{col}",
+                            on_click=lambda _, rid=row_id: self.select_row(rid),
+                        ))
+                    x += width
+        return ft.Stack(hits, fit=ft.StackFit.EXPAND, clip_behavior=ft.ClipBehavior.HARD_EDGE)
+
+    @staticmethod
+    def hit_box(label, handler, x, y, width, height, *, key):
+        return ft.Container(
+            content=ft.Semantics(label=label, button=True, content=ft.Container(expand=True)),
+            left=x, top=y, width=width, height=height, bgcolor=ft.Colors.TRANSPARENT,
+            on_click=handler, key=key,
+        )
+
+    def select_row(self, row_id, selected=None):
+        if selected is None or self.model.selected(row_id) != selected:
+            self.model.toggle(row_id)
+            self.refresh()
+
+    def toggle_all(self, _=None):
+        self.model.toggle_all()
+        self.refresh()
+
+    async def sort_column(self, column):
+        await self.model.sort(column)
+        self.refresh()
+
     def position_label(self):
         m = self.model
         end = min(m.count, m.first + m.visible)
@@ -83,6 +146,8 @@ class StickyListView(ft.Container):
             text += "  ·  정렬 중…"
         elif m.sort_column_index is not None:
             text += f"  ·  {self.labels[m.sort_column_index]} {'오름차순' if m.sort_ascending else '내림차순'}"
+        if getattr(m, "feedback", ""):
+            text += f"  ·  {m.feedback}"
         return text
 
     def draw(self):
@@ -96,7 +161,13 @@ class StickyListView(ft.Container):
                                   key=f"check-{slot}", paint=ft.Paint(color="#087F70" if checked else "#64717D",
                                   style=ft.PaintingStyle.FILL if checked else ft.PaintingStyle.STROKE, stroke_width=1.5)))
             if checked or partial:
-                shapes.append(cv.Text(20, y + 7, "−" if partial else "✓", style=ft.TextStyle(size=13, color="white"), key=f"tick-{slot}"))
+                pen = ft.Paint(color="white", stroke_width=1.6)
+                cy = y + self.row_height / 2
+                if partial:
+                    shapes.append(cv.Line(21, cy, 31, cy, paint=pen, key=f"tick-{slot}"))
+                else:
+                    shapes.extend([cv.Line(21, cy, 25, cy + 4, paint=pen, key=f"tick-a-{slot}"),
+                                   cv.Line(25, cy + 4, 32, cy - 5, paint=pen, key=f"tick-b-{slot}")])
 
         checkbox("header", 4, self.model.selected_count > 0,
                  0 < self.model.selected_count < self.model.count)
@@ -135,11 +206,15 @@ class StickyListView(ft.Container):
         if self.on_model_change is not None:
             self.on_model_change()
         else:
-            self.canvas.shapes = self.draw()
+            self.refresh_surface()
             self.track.shapes = self.draw_track()
             self.position.value = self.position_label()
             if self._attached:
                 self.page.update(self.canvas, self.track, self.position)
+
+    def refresh_surface(self):
+        self.canvas.shapes = self.draw()
+        self.canvas.content = self.overlay()
 
     def move(self, first):
         if self.model.move(first):
@@ -158,30 +233,6 @@ class StickyListView(ft.Container):
         if event.height > 0 and self.model.track_height != event.height:
             self.model.track_height = event.height
             self.refresh()
-
-    async def tap(self, event):
-        if event.local_position is None:
-            return
-        x, y = event.local_position.x, event.local_position.y
-        if y < self.heading_height:
-            if x < 52:
-                self.model.toggle_all()
-            else:
-                boundary = 52
-                for col, width in enumerate(self.widths):
-                    boundary += width
-                    if x < boundary:
-                        task = self.model.sort(col)
-                        # The worker yields during sorting; navigation stays usable.
-                        await task
-                        break
-        else:
-            slot = int((y - self.heading_height) // self.row_height)
-            position = self.model.first + slot
-            if slot >= self.model.visible or position >= self.model.count:
-                return
-            self.model.toggle(self.model.order[position])
-        self.refresh()
 
     def track_tap(self, event):
         if event.local_position is not None:

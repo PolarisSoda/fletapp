@@ -19,6 +19,7 @@ NAVIGATION = (
     ("결과 확인", ft.Icons.IMAGE_SEARCH),
     ("대용량 목록", ft.Icons.TABLE_ROWS_OUTLINED),
     ("순수 Flet 목록", ft.Icons.VIEW_LIST_OUTLINED),
+    ("ListView 목록", ft.Icons.FORMAT_LIST_BULLETED),
 )
 
 
@@ -42,6 +43,7 @@ def main(
     results = ResultsView(page)
     virtual_list = VirtualListView()
     pure_list = PureListView()
+    native_list = PureListView(native=True)
     active = 0
     sidebar = ft.Container(
         width=194, padding=ft.Padding.symmetric(vertical=20, horizontal=14), bgcolor=NAV
@@ -141,6 +143,7 @@ def main(
             results.build,
             virtual_list.build,
             pure_list.build,
+            native_list.build,
         )
         body.content = builders[active]()
 
