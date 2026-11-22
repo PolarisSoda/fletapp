@@ -406,7 +406,7 @@ wheels = [
 [[package]]
 name = "flet-virtual-table"
 version = "0.2.0"
-source = { directory = "../../../flet-virtual-table" }
+source = { directory = "../flet-virtual-table" }
 dependencies = [
     { name = "flet" },
 ]
@@ -942,7 +942,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "flet", specifier = ">=1.1.2" },
-    { name = "flet-virtual-table", directory = "../../../flet-virtual-table" },
+    { name = "flet-virtual-table", directory = "../flet-virtual-table" },
 ]
 
 [package.metadata.requires-dev]
