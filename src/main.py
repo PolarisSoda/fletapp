@@ -9,6 +9,7 @@ from ui.home import build_home
 from ui.results import ResultsView
 from ui.training import TRAINING_SEEDS, TrainingView
 from ui.virtual_list import VirtualListView
+from ui.pure_list import PureListView
 
 
 NAVIGATION = (
@@ -17,6 +18,7 @@ NAVIGATION = (
     ("학습 자동화", ft.Icons.ACCOUNT_TREE_OUTLINED),
     ("결과 확인", ft.Icons.IMAGE_SEARCH),
     ("대용량 목록", ft.Icons.TABLE_ROWS_OUTLINED),
+    ("순수 Flet 목록", ft.Icons.VIEW_LIST_OUTLINED),
 )
 
 
@@ -39,6 +41,7 @@ def main(
     sender = sender if sender is not None else configured_sender()
     results = ResultsView(page)
     virtual_list = VirtualListView()
+    pure_list = PureListView()
     active = 0
     sidebar = ft.Container(
         width=194, padding=ft.Padding.symmetric(vertical=20, horizontal=14), bgcolor=NAV
@@ -137,6 +140,7 @@ def main(
             automation.build,
             results.build,
             virtual_list.build,
+            pure_list.build,
         )
         body.content = builders[active]()
 

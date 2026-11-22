@@ -8,7 +8,7 @@ import flet as ft
 from flet_datagrid import DataGrid
 from flet_virtual_table import FletVirtualTable
 
-from backend.virtual_list import COLUMN_LABELS, NUMERIC_COLUMNS, ROW_COUNT, row_values, sort_key
+from backend.virtual_list import COLUMN_LABELS, COLUMN_WIDTHS, HEADING_HEIGHT, NUMERIC_COLUMNS, ROW_COUNT, ROW_HEIGHT, row_values, sort_key
 from ui.common import LINE, badge, heading, muted
 
 
@@ -62,9 +62,9 @@ def create_table(on_change):
         records=range(ROW_COUNT),
         row_builder=row_values,
         sort_keys={index: sort_key(index) for index in range(len(COLUMN_LABELS))},
-        column_widths=[110, 150, 160, 170, 120, 100, 100, 140, 110, 160],
-        row_height=38,
-        heading_row_height=46,
+        column_widths=list(COLUMN_WIDTHS),
+        row_height=ROW_HEIGHT,
+        heading_row_height=HEADING_HEIGHT,
         on_selection_change=on_change,
         on_sort=on_change,
         expand=True,
@@ -76,7 +76,7 @@ def list_layout(table, status):
     # constraints and make the pinned header scroll with the whole screen.
     return ft.Column(
         [
-            heading("04", "대용량 목록", "스크롤해도 열 제목은 고정됩니다. 행을 선택하거나 열 제목을 눌러 정렬하세요."),
+            heading("04", "대용량 목록", "휠 한 번에 한 행씩 이동합니다. 고정 헤더와 전체 범위 스크롤을 지원합니다."),
             ft.Row([
                 badge(f"{ROW_COUNT:,}행"),
                 badge(f"{len(COLUMN_LABELS)}열"),
