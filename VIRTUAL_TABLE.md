@@ -52,10 +52,12 @@ receives wheel/tap/drag input. The horizontal scrollable contains the heading an
 body together; the independent vertical scrollbar stays at the right edge even
 when viewing the last columns. The control displays real values immediately,
 keeps an LRU of at most 256 raw records, supports sorting and select-all through
-exceptions, and retains position/selection/ordering on re-entry. Canvas cells are
-text-only: they do not expose individual accessibility cells or editable Flet
-widgets. The extension retains its native per-cell widget API and pinned checkbox
-column; these capabilities are not part of the pure Canvas implementation.
+exceptions, and retains position/selection/ordering on re-entry. Its default cells
+are painted text. `cell_builder(record, row_id, column_index)` can return any Flet
+control (including Row/Column/buttons/fields) for an overlay cell, or None to use
+painted text. Only visible cells build these controls. `row_height` is configurable
+and fixed across rows. Persist editable data in the provider/view model; offscreen
+controls are discarded. The extension retains its pinned checkbox-column feature.
 
 The pure control has no import of `flet_virtual_table` or `flet_datagrid`. Run it
 with the stock Flet client using `uv run flet run src/pure_list_demo.py --web`.
@@ -71,6 +73,55 @@ has a separate whole-dataset cost and should be measured separately. The pure
 control processes each wheel event in Python, whereas the extension scrolls
 locally inside its cache; Python/protocol timings alone are not a frame-rate test.
 No WPF-level or fixed-FPS guarantee is claimed without measuring the target device.
+
+## Native ListView and input/lifecycle fixes
+
+The **ListView 목록** tab uses `src/controls/windowed_list_view.py`, a real
+`ft.ListView` with ordinary Flet row controls. `build_controls_on_demand=True`
+enables Flutter's lazy widget construction. The tab switches between fixed
+`item_extent` and `prototype_item` (never both simultaneously). These settings
+do not lazily construct Python controls: the separate `ListWindow` provider still
+bounds the Python control list to the visible window. The full-range logical
+scrollbar addresses all 500,000 records. Because the native list holds only whole
+visible rows, its own pixel-scroll extent stays zero; the shared wheel handler
+moves exactly one logical row. The header remains outside the vertical ListView,
+and both header/body share horizontal scrolling while the right scrollbar stays
+fixed. This windowed implementation is intentional, not a prebuilt 500,000-control
+ListView relying only on Flutter on-demand rendering.
+
+`WindowedListView` supports the same `cell_builder` as Canvas and also accepts
+`row_control_builder(record, row_id, selected) -> ft.Control` for a whole custom
+row. Use `row_height=56` (or another fixed size) for taller content. The **복합 셀**
+switch demonstrates real Row/Column/IconButton content on both pure-Flet tabs;
+clicking the nested button does not also toggle selection. Native hit controls
+bind displayed record IDs, so a queued click cannot select a different row merely
+because another wheel event changed the current viewport. Canvas no longer
+selects rows from a whole-surface `on_tap_down` coordinate calculation.
+
+Example cell hook (records remain raw provider data):
+
+```python
+def cell_builder(record, row_id, column):
+    if column == 1:
+        return ft.Row([
+            ft.Icon(ft.Icons.INFO_OUTLINE, size=16),
+            ft.Text(record["name"], expand=True),
+            ft.IconButton(ft.Icons.PLAY_ARROW, on_click=lambda e: run(record)),
+        ])
+    return None
+```
+
+The virtual-table remount bug was a request-ID collision: every new Flutter
+widget restarted at ID 1. A repeated top-range response could exactly equal the
+cached Python property, causing Flet to emit no patch while the new widget waited.
+Request IDs now use a client-wide sequence that advances beyond the cached reply,
+including after client reload. IDs stay within 31 bits because the web MessagePack
+codec does not support its Int64 accessor. Unanswered requests retry after 750 ms; stale
+replies still fail the current-ID/revision check. This is independent of the pure
+Flet renderer. Tests repeatedly switch among all three tabs and verify emitted
+responses, including identical ranges after remount.
+
+Standalone stock-client runner: `uv run flet run src/listview_demo.py --web`.
 
 Tests cover pure imports with the extension blocked, discrete wheel steps, final
 row reachability, bounded caching, stable selection through sorting, and real

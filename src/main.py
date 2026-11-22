@@ -9,7 +9,7 @@ from ui.home import HomeScreen
 from ui.results import ResultsScreen, ResultsState
 from ui.training import TRAINING_SEEDS, TrainingScreen, TrainingState
 from ui.virtual_list import VirtualListScreen, VirtualListState
-from ui.pure_list import PureListScreen, PureListState
+from ui.pure_list import ListViewScreen, PureListScreen, PureListState
 
 
 NAVIGATION = (
@@ -19,6 +19,7 @@ NAVIGATION = (
     ("결과 확인", ft.Icons.IMAGE_SEARCH),
     ("대용량 목록", ft.Icons.TABLE_ROWS_OUTLINED),
     ("순수 Flet 목록", ft.Icons.VIEW_LIST_OUTLINED),
+    ("ListView 목록", ft.Icons.FORMAT_LIST_BULLETED),
 )
 
 
@@ -116,6 +117,7 @@ def main(
         results = ft.use_memo(ResultsState, [])
         virtual_list = ft.use_memo(VirtualListState, [])
         pure_list = ft.use_memo(PureListState, [])
+        native_list = ft.use_memo(PureListState, [])
         notice = use_notice()
         seed = TRAINING_SEEDS[domain] if active == 1 else BASE_SEED
         ft.use_effect(lambda: apply_theme(seed, dark), dependencies=[seed, dark])
@@ -130,6 +132,7 @@ def main(
             lambda: ResultsScreen(results),
             lambda: VirtualListScreen(virtual_list),
             lambda: PureListScreen(pure_list),
+            lambda: ListViewScreen(native_list),
         )
         return ft.Row(
             [
