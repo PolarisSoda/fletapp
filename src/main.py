@@ -9,6 +9,7 @@ from ui.home import HomeScreen
 from ui.results import ResultsScreen, ResultsState
 from ui.training import TRAINING_SEEDS, TrainingScreen, TrainingState
 from ui.virtual_list import VirtualListScreen, VirtualListState
+from ui.pure_list import PureListScreen, PureListState
 
 
 NAVIGATION = (
@@ -17,6 +18,7 @@ NAVIGATION = (
     ("학습 자동화", ft.Icons.ACCOUNT_TREE_OUTLINED),
     ("결과 확인", ft.Icons.IMAGE_SEARCH),
     ("대용량 목록", ft.Icons.TABLE_ROWS_OUTLINED),
+    ("순수 Flet 목록", ft.Icons.VIEW_LIST_OUTLINED),
 )
 
 
@@ -113,6 +115,7 @@ def main(
         automation = ft.use_memo(AutomationState, [])
         results = ft.use_memo(ResultsState, [])
         virtual_list = ft.use_memo(VirtualListState, [])
+        pure_list = ft.use_memo(PureListState, [])
         notice = use_notice()
         seed = TRAINING_SEEDS[domain] if active == 1 else BASE_SEED
         ft.use_effect(lambda: apply_theme(seed, dark), dependencies=[seed, dark])
@@ -126,6 +129,7 @@ def main(
             lambda: AutomationScreen(store, automation, sender, notice),
             lambda: ResultsScreen(results),
             lambda: VirtualListScreen(virtual_list),
+            lambda: PureListScreen(pure_list),
         )
         return ft.Row(
             [

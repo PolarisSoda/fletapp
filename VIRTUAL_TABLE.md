@@ -31,6 +31,52 @@ below uses a different entry point. Stock `flet run` clients lack the extension.
 sort completion while detached, navigation patch sizes, and selection retention
 using a real Flet messaging session. Run `uv run pytest` on both UI branches.
 
+## Row-wheel scrolling and pure Flet comparison
+
+Both navigation screens use the same 500,000 records, ten columns, column widths,
+38-pixel rows and 46-pixel headings. One vertical pointer-wheel event moves one
+row regardless of the OS-provided pixel delta; zero/horizontal deltas do not move
+rows. Wheel movement snaps from a fractional scrollbar offset to a row boundary.
+Scrollbar dragging still traverses the entire dataset, rather than one window.
+Touch/trackpad drag behavior is distinct from discrete mouse-wheel input.
+
+The local extension's `RowScrollController` handles wheel input in Flutter, without
+a Python round trip per row. Its prefetch window includes 64 rows before and extra
+rows after the viewport; the next window is requested only near a cache edge.
+Ordinary scrolling can therefore keep displaying cached rows. A large scrollbar
+jump can still briefly show placeholders while a new range arrives.
+
+`src/controls/sticky_list.py` is a separate, app-owned `StickyListView` using only
+the public Flet package. `Canvas` draws visible text cells and `GestureDetector`
+receives wheel/tap/drag input. The horizontal scrollable contains the heading and
+body together; the independent vertical scrollbar stays at the right edge even
+when viewing the last columns. The control displays real values immediately,
+keeps an LRU of at most 256 raw records, supports sorting and select-all through
+exceptions, and retains position/selection/ordering on re-entry. Canvas cells are
+text-only: they do not expose individual accessibility cells or editable Flet
+widgets. The extension retains its native per-cell widget API and pinned checkbox
+column; these capabilities are not part of the pure Canvas implementation.
+
+The pure control has no import of `flet_virtual_table` or `flet_datagrid`. Run it
+with the stock Flet client using `uv run flet run src/pure_list_demo.py --web`.
+The combined application still needs its existing custom build for the other tab.
+`ListWindow` owns provider/order/selection independently of the renderer; both UI
+branches share this model and the pure control. The declarative branch publishes
+fresh bounded drawings through observable state, instead of mutating frozen UI.
+
+For comparison, keep viewport size, data, browser/native runtime and build mode
+equal. Compare first entry, repeat entry, ordinary wheel events, a sustained wheel
+sequence, dragging the thumb to the final rows, and horizontal scrolling. Sorting
+has a separate whole-dataset cost and should be measured separately. The pure
+control processes each wheel event in Python, whereas the extension scrolls
+locally inside its cache; Python/protocol timings alone are not a frame-rate test.
+No WPF-level or fixed-FPS guarantee is claimed without measuring the target device.
+
+Tests cover pure imports with the extension blocked, discrete wheel steps, final
+row reachability, bounded caching, stable selection through sorting, and real
+Flet session patches/navigation on both branches. The extension's Flutter widget
+test sends real `PointerScrollEvent`s with several delta magnitudes to a scrollable.
+
 ## Standalone benchmark
 
 The extension lives at `../flet-virtual-table`, separately from this application.
