@@ -229,7 +229,8 @@ async def test_workbench_navigation_keeps_results_and_automation_interactive(tmp
     def screen():
         return ft.unwrap_component(layout(workbench)[1].content)
 
-    await event(workbench, sidebar()[7], "click")
+    theme_toggle = next(control for control in sidebar() if control.key == "theme-toggle")
+    await event(workbench, theme_toggle, "click")
     assert workbench.page.theme_mode == ft.ThemeMode.DARK
 
     await event(workbench, sidebar()[4], "click")
