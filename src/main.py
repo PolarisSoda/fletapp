@@ -8,6 +8,7 @@ from ui.common import BASE_SEED, BG, NAV, NAV_SELECTED, badge
 from ui.home import build_home
 from ui.results import ResultsView
 from ui.training import TRAINING_SEEDS, TrainingView
+from ui.virtual_list import VirtualListView
 
 
 NAVIGATION = (
@@ -15,6 +16,7 @@ NAVIGATION = (
     ("학습 실험", ft.Icons.SCIENCE_OUTLINED),
     ("학습 자동화", ft.Icons.ACCOUNT_TREE_OUTLINED),
     ("결과 확인", ft.Icons.IMAGE_SEARCH),
+    ("대용량 목록", ft.Icons.TABLE_ROWS_OUTLINED),
 )
 
 
@@ -36,6 +38,7 @@ def main(
     store = store if store is not None else ExperimentStore()
     sender = sender if sender is not None else configured_sender()
     results = ResultsView(page)
+    virtual_list = VirtualListView()
     active = 0
     sidebar = ft.Container(
         width=194, padding=ft.Padding.symmetric(vertical=20, horizontal=14), bgcolor=NAV
@@ -58,6 +61,8 @@ def main(
 
     def navigate(index):
         nonlocal active
+        if index == active and body.content is not None:
+            return
         previous = active
         active = index
         theme_changed = apply_theme()
@@ -131,6 +136,7 @@ def main(
             training.build,
             automation.build,
             results.build,
+            virtual_list.build,
         )
         body.content = builders[active]()
 
