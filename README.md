@@ -21,6 +21,7 @@ uv run flet serve build/web
 - **순수 Flet 목록**은 같은 데이터를 앱 내부 `StickyListView` 컨트롤로 표시합니다. 기본 Flet Canvas와 실제 Flet 클릭·셀 컨트롤을 사용하며, 화면에 보이는 행만 그립니다. 각 목록은 휠 이벤트 한 번에 정확히 한 행씩 이동합니다. 스크롤바 드래그로 전체 범위를 이동할 수 있습니다.
 - **ListView 목록**은 실제 `ft.ListView`와 고정 헤더를 사용합니다. `build_controls_on_demand=True`를 적용했고, `prototype` 스위치로 고정 `item_extent`와 prototype 방식을 비교할 수 있습니다. Python에서도 가시 행만 생성하여 전체 50만 개의 컨트롤을 만들지 않습니다.
 - 순수 Flet 및 ListView 탭의 **복합 셀**을 켜면 실제 `Row`, `Column`, 아이콘과 실행 버튼이 나타납니다. 버튼 실행과 행 선택은 독립적으로 동작합니다. 순수 Flet 클릭은 그려진 좌표 추정 대신 행 ID에 연결된 실제 컨트롤로 처리합니다.
+- **순수 Flet 목록**과 **ListView 목록**의 데이터셋 필터에서 전체, CIFAR-10, Oxford Pets, Flowers-102를 선택할 수 있습니다. 조건에 맞는 행의 인덱스만 추리고 화면에 보이는 행만 다시 표시합니다. 기존 정렬은 유지하며, 필터 변경 시 맨 위로 이동하고 행 선택을 초기화합니다. 필터와 위치는 화면을 오가도 유지됩니다.
 
 대용량 목록은 로컬 `flet-virtual-table` 확장을 사용하므로 기본 `flet run` 클라이언트 대신 확장을 포함한 빌드가 필요합니다.
 

@@ -142,7 +142,11 @@ class StickyListView(ft.Container):
         m = self.model
         end = min(m.count, m.first + m.visible)
         text = f"{m.first + 1 if m.count else 0:,}–{end:,} / {m.count:,}행  ·  {m.selected_count:,}행 선택"
-        if m.sorting:
+        if m.count != m.total_count:
+            text += f"  ·  전체 {m.total_count:,}행"
+        if m.filtering:
+            text += "  ·  필터 적용 중…"
+        elif m.sorting:
             text += "  ·  정렬 중…"
         elif m.sort_column_index is not None:
             text += f"  ·  {self.labels[m.sort_column_index]} {'오름차순' if m.sort_ascending else '내림차순'}"
@@ -194,6 +198,8 @@ class StickyListView(ft.Container):
                 ))
                 x += width
             shapes.append(cv.Line(0, y + self.row_height, self.table_width, y + self.row_height, paint=line, key=f"line-{slot}"))
+        if not self.model.count:
+            shapes.append(cv.Text(24, self.heading_height + 20, "조건에 맞는 데이터가 없습니다.", style=ink))
         self.last_draw_ms = (time.perf_counter() - started) * 1000
         return shapes
 

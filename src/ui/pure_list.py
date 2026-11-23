@@ -2,7 +2,7 @@
 import flet as ft
 
 from backend.list_window import ListWindow
-from backend.virtual_list import COLUMN_LABELS, COLUMN_WIDTHS, NUMERIC_COLUMNS, ROW_COUNT, row_values, sort_key
+from backend.virtual_list import COLUMN_LABELS, COLUMN_WIDTHS, DATASETS, NUMERIC_COLUMNS, ROW_COUNT, row_values, sort_key
 from controls.sticky_list import StickyListView
 from controls.windowed_list_view import WindowedListView
 from ui.common import badge, heading
@@ -15,6 +15,7 @@ def create_model():
     model.use_prototype = False
     model.cell_actions = {}
     model.feedback = ""
+    model.dataset_filter = "all"
     return model
 
 
@@ -51,6 +52,17 @@ def create_control(model, on_change=None, *, native=False):
 def layout(control, on_options=None, *, native=False):
     model = control.model
 
+    async def filter_dataset(event):
+        value = event.control.value or "all"
+        if value == model.dataset_filter:
+            return
+        model.dataset_filter = value
+        dataset_value = sort_key(2)
+        predicate = None if value == "all" else lambda record: dataset_value(record) == value
+        await model.set_filter(predicate)
+        model.feedback = ""
+        control.refresh()
+
     def rich(event):
         model.rich_cells = event.control.value
         on_options()
@@ -59,7 +71,15 @@ def layout(control, on_options=None, *, native=False):
         model.use_prototype = event.control.value
         on_options()
 
-    options = [ft.Switch(label="복합 셀", value=model.rich_cells, on_change=rich, key="rich-cells")]
+    options = [
+        ft.Dropdown(
+            label="데이터셋", value=model.dataset_filter, width=205,
+            options=[ft.DropdownOption(key="all", text="전체 데이터셋"),
+                     *[ft.DropdownOption(key=name) for name in DATASETS]],
+            on_select=filter_dataset, key="dataset-filter",
+        ),
+        ft.Switch(label="복합 셀", value=model.rich_cells, on_change=rich, key="rich-cells"),
+    ]
     if native:
         options.append(ft.Switch(label="prototype", value=model.use_prototype, on_change=prototype, key="list-prototype"))
     return ft.Column([

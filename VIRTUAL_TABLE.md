@@ -123,6 +123,19 @@ responses, including identical ranges after remount.
 
 Standalone stock-client runner: `uv run flet run src/listview_demo.py --web`.
 
+Both app-owned Canvas and ListView screens include a dataset dropdown (all,
+CIFAR-10, Oxford Pets, Flowers-102). `ListWindow.set_filter(predicate)` scans raw
+record IDs and rebuilds the matching index order, preserving the active sort.
+Only visible rows are painted/built afterwards; filtering never constructs
+500,000 rows or cell controls. The footer and scrollbar use the filtered count.
+Changing the filter returns to the first row and clears selection; returning
+through navigation preserves the chosen filter, position and subsequent selection.
+Native Python computes the index order in a worker; browser Python yields between
+8,192-record filter batches (the final sort remains synchronous in browser Python).
+Filtering and sorting share request revisions, so late jobs cannot overwrite newer
+results. Filtering costs a full provider scan and is separate from drawing cost.
+This dropdown is on the two app-owned screens, not the Flutter extension screen.
+
 Tests cover pure imports with the extension blocked, discrete wheel steps, final
 row reachability, bounded caching, stable selection through sorting, and real
 Flet session patches/navigation on both branches. The extension's Flutter widget

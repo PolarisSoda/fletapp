@@ -9,12 +9,13 @@ COLUMN_LABELS = (
     "에폭", "배치", "정확도 (%)", "손실", "소요 시간 (초)",
 )
 NUMERIC_COLUMNS = {0, 5, 6, 7, 8, 9}
+DATASETS = ("Oxford Pets", "CIFAR-10", "Flowers-102")
 
 
 _VALUES = (
     lambda i: i + 1,
     lambda i: f"실험 {i + 1:06d}",
-    lambda i: ("Oxford Pets", "CIFAR-10", "Flowers-102")[i % 3],
+    lambda i: DATASETS[i % len(DATASETS)],
     lambda i: ("ResNet-50", "EfficientNet-B0", "ViT-B/16")[i % 3],
     lambda i: ("완료", "학습 중", "대기", "검증 중")[i % 4],
     lambda i: 10 + i % 191,

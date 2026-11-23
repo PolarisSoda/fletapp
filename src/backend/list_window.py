@@ -27,11 +27,18 @@ class ListWindow:
         self.sort_column_index = None
         self.sort_ascending = True
         self.sorting = False
-        self._sort_ticket = 0
+        self.filtering = False
+        self._filter = None
+        self._applied_filter = None
+        self._view_ticket = 0
+
+    @property
+    def total_count(self):
+        return len(self.records)
 
     @property
     def count(self):
-        return len(self.records)
+        return len(self.order)
 
     @property
     def maximum(self):
@@ -45,7 +52,9 @@ class ListWindow:
         return self.all_selected != (row_id in self.exceptions)
 
     def toggle(self, row_id):
-        if not 0 <= row_id < self.count:
+        if not 0 <= row_id < self.total_count:
+            return
+        if self._applied_filter is not None and not self._applied_filter(self.records[row_id]):
             return
         if row_id in self.exceptions:
             self.exceptions.remove(row_id)
@@ -89,21 +98,63 @@ class ListWindow:
         return top, height, travel
 
     async def sort(self, column):
-        self._sort_ticket += 1
-        ticket = self._sort_ticket
         ascending = self.sort_column_index != column or not self.sort_ascending
-        self.sorting = True
+        self.sort_column_index, self.sort_ascending = column, ascending
+        return await self._rebuild_order()
+
+    async def set_filter(self, predicate=None):
+        """Filter raw records, retaining sort order; selection resets on change.
+
+        Only record IDs are materialized, never the full set of cell values or
+        controls. Filtering and sorting share a revision so stale jobs cannot
+        replace a newer view, including after navigation.
+        """
+        self._filter = predicate
+        return await self._rebuild_order()
+
+    async def _rebuild_order(self):
+        self._view_ticket += 1
+        ticket = self._view_ticket
+        predicate = self._filter
+        column, ascending = self.sort_column_index, self.sort_ascending
+        self.sorting = column is not None
+        self.filtering = predicate is not self._applied_filter
+
+        def matching(start, stop):
+            return [i for i in range(start, stop) if predicate(self.records[i])]
+
+        def ordered(indices):
+            if column is None:
+                return indices
+            key = self.sort_keys.get(column, lambda record: self.row_builder(record)[column])
+            return sorted(indices, key=lambda i: key(self.records[i]), reverse=not ascending)
 
         def work():
-            key = self.sort_keys.get(column, lambda record: self.row_builder(record)[column])
-            return sorted(range(self.count), key=lambda i: key(self.records[i]), reverse=not ascending)
+            indices = matching(0, self.total_count) if predicate else range(self.total_count)
+            return ordered(indices)
 
         try:
-            order = work() if sys.platform == "emscripten" else await asyncio.to_thread(work)
-            if ticket == self._sort_ticket:
-                self.order = order
-                self.sort_column_index, self.sort_ascending = column, ascending
-                self.first = 0
+            if sys.platform == "emscripten" and predicate is not None:
+                # Browser Python has no worker threads. Yield between batches
+                # so filtering does not monopolize the UI/event loop.
+                indices = []
+                for start in range(0, self.total_count, 8192):
+                    indices.extend(matching(start, min(start + 8192, self.total_count)))
+                    await asyncio.sleep(0)
+                    if ticket != self._view_ticket:
+                        return False
+                order = ordered(indices)
+            else:
+                order = work() if sys.platform == "emscripten" else await asyncio.to_thread(work)
+            if ticket != self._view_ticket:
+                return False
+            if predicate is not self._applied_filter:
+                self.all_selected = False
+                self.exceptions.clear()
+            self._applied_filter = predicate
+            self.order = order
+            self.first = 0
+            return True
         finally:
-            if ticket == self._sort_ticket:
-                self.sorting = False
+            if ticket == self._view_ticket:
+                self.sorting = self.filtering = False
