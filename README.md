@@ -37,6 +37,106 @@ ListView 버전만 실행하려면 `uv run flet run src/listview_demo.py --web`�
 
 화면은 `src/ui`, 저장과 데이터 처리는 `src/backend`에 있습니다. 테스트는 `uv run pytest`로 실행합니다.
 
+## 순수 Flet Canvas 목록: 위치와 사용법
+
+사이드바의 **순수 Flet 목록**은 `ft.ListView`가 아니라 Canvas로 표를 그리는
+앱 내부 컨트롤입니다. 별도 Flutter 확장 없이 기본 Flet API만 사용합니다.
+
+| 파일 | 역할 |
+| --- | --- |
+| [src/controls/sticky_list.py](src/controls/sticky_list.py) | `StickyListView`: Canvas 표, 고정 헤더, 클릭 처리, 오른쪽 고정 세로 스크롤바 |
+| [src/backend/list_window.py](src/backend/list_window.py) | `ListWindow`: 표시 범위, 정렬, 필터, 선택 상태, 행 데이터 캐시 |
+| [src/ui/pure_list.py](src/ui/pure_list.py) | 50만 행 데모 화면, 데이터셋 필터와 복합 셀 예제 |
+| [src/pure_list_demo.py](src/pure_list_demo.py) | Canvas 목록만 실행하는 진입점 |
+
+프로젝트 루트에서 데모를 실행합니다. `--web`을 빼면 데스크톱으로 실행합니다.
+
+```powershell
+uv run flet run src/pure_list_demo.py --web
+```
+
+### 내 데이터로 사용하기
+
+아래 코드를 `src/canvas_example.py`로 저장하고
+`uv run flet run src/canvas_example.py --web`으로 실행할 수 있습니다.
+
+```python
+import flet as ft
+
+from backend.list_window import ListWindow
+from controls.sticky_list import StickyListView
+
+
+records = [
+    {"id": 1, "name": "실험 A", "dataset": "CIFAR-10"},
+    {"id": 2, "name": "실험 B", "dataset": "Oxford Pets"},
+    {"id": 3, "name": "실험 C", "dataset": "CIFAR-10"},
+]
+
+
+def row_builder(record):
+    # 열 순서와 같은 개수의 원시 값을 반환합니다.
+    return record["id"], record["name"], record["dataset"]
+
+
+def main(page: ft.Page):
+    model = ListWindow(
+        records, row_builder,
+        sort_keys={
+            0: lambda record: record["id"],
+            1: lambda record: record["name"],
+            2: lambda record: record["dataset"],
+        },
+    )
+    grid = StickyListView(
+        columns=["번호", "이름", "데이터셋"],
+        records=records, row_builder=row_builder, model=model,
+        column_widths=[100, 220, 180], numeric_columns={0},
+        row_height=38, heading_height=46, expand=True,
+    )
+
+    async def filter_dataset(event):
+        value = event.control.value
+        predicate = None if value == "all" else lambda record: record["dataset"] == value
+        await model.set_filter(predicate)
+        grid.refresh()
+
+    page.add(ft.Column([
+        ft.Dropdown(
+            label="데이터셋", value="all", width=220,
+            options=[
+                ft.DropdownOption(key="all", text="전체 데이터셋"),
+                ft.DropdownOption(key="CIFAR-10"),
+                ft.DropdownOption(key="Oxford Pets"),
+            ],
+            on_select=filter_dataset,
+        ),
+        grid,
+    ], expand=True))
+
+
+if __name__ == "__main__":
+    ft.run(main)
+```
+
+헤더를 클릭하면 해당 열로 정렬하고, 행 왼쪽 체크 영역을 클릭하면 선택합니다.
+`model.selected_count`와 `model.selected(row_id)`로 선택 상태를 읽습니다.
+`row_id`는 정렬·필터 후의 화면 순번이 아니라 원본 `records`의 0부터 시작하는 인덱스입니다.
+필터는 `await model.set_filter(predicate)`로 적용하고, `await model.set_filter()`로 해제한 뒤
+`grid.refresh()`를 호출합니다. 필터 변경 시 선택과 스크롤 위치를 초기화하고 기존 정렬은 유지합니다.
+
+`records`에는 길이를 알 수 있고 인덱스로 접근할 수 있는 리스트나 `range` 등을 전달합니다.
+`row_builder`는 보이는 행에 필요한 값만 반환하며, 최근 256개 행의 값이 캐시됩니다.
+정렬·필터는 전체 데이터에서 표시할 인덱스를 계산하지만 Canvas는 보이는 행만 다시 그립니다.
+큰 데이터는 위 예제처럼 열별 `sort_keys`를 제공하면 정렬 중 전체 열 값을 생성하는 비용을 줄입니다.
+
+기본 셀은 그려진 텍스트입니다. 실제 버튼이나 `Row`가 필요하면
+`cell_builder(record, row_id, column_index)`를 전달하고, 해당 셀에 넣을 Flet 컨트롤을
+반환합니다. `None`을 반환한 셀은 기본 텍스트로 표시합니다. 셀 위치와 크기는 컨트롤이 계산하며,
+행 높이는 고정입니다. 화면 밖으로 나간 셀 컨트롤은 버려지므로 입력값은 별도 데이터 모델에 보관하세요.
+이 예제는 명령형 API이며, 선언형 UI에서의 상태 연결은 같은 [pure_list.py](src/ui/pure_list.py)의
+`PureListState`와 `PureListScreen`을 참고하세요.
+
 ## 외부 전송
 
 학습 자동화에서 저장된 실험을 고르고 **외부 전송**을 누르면 설정 전체를 JSON으로 POST합니다. 앱을 실행하기 전에 받을 API 주소를 지정하세요.
